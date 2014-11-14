@@ -1,0 +1,42 @@
+###############################################################################
+## Monit control file
+###############################################################################
+
+###############################################################################
+## Global section
+###############################################################################
+set daemon  60              # check services at 1-minute intervals
+set logfile syslog facility log_daemon
+set idfile /var/run/monit/.monit.id
+set statefile /var/run/monit/monit.state
+set pidfile /var/run/monit/monit.pid
+
+## Monit has an embedded web server which can be used to view status of 
+## services monitored and manage services from a web interface. See the
+## Monit Wiki if you want to enable SSL for the web server. 
+#
+set httpd port 2812 and
+    use address localhost  # only accept connection from localhost
+    allow localhost        # allow localhost to connect to the server and
+    allow admin:monit      # require user 'admin' with password 'monit'
+    allow @monit           # allow users of group 'monit' to connect (rw)
+    allow @users readonly  # allow users of group 'users' to connect readonly
+
+
+###############################################################################
+## Services
+###############################################################################
+
+##  start and check vpn-monitor
+check process vpn-monitor with pidfile /var/run/PrivateOn/vpn-monitor.pid
+    start program = "/etc/init.d/vpn-monitor start" with timeout 60 seconds
+    stop program  = "/etc/init.d/vpn-monitor stop"
+    if cpu > 60% for 2 cycles then alert
+    if cpu > 80% for 5 cycles then restart
+    if totalmem > 200.0 MB for 5 cycles then restart
+    if children > 10 then restart
+    if loadavg(5min) greater than 10 for 8 cycles then stop
+    if failed port 44244 type tcp
+       with timeout 20 seconds
+       retry 3
+       then restart

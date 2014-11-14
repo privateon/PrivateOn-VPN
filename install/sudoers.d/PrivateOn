@@ -1,0 +1,3 @@
+## All users access to PrivateOn software
+Cmnd_Alias PRIVATEON = /opt/PrivateOn/vpn-gui/gui.sh, /opt/PrivateOn/vpn-monitor/vpn_monitor.pl, /opt/PrivateOn/vpn-gui/vpn_gui.pl
+ALL ALL=NOPASSWD: PRIVATEON

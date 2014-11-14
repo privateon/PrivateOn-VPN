@@ -1,0 +1,19 @@
+[Desktop Entry]
+Comment[en_US]=
+Comment=
+Exec=xhost SI:localuser:root; export XAUTHORITY=`echo $HOME`/.Xauthority; sudo /opt/PrivateOn/vpn-gui/gui.sh
+GenericName[en_US]=
+GenericName=
+Icon=/opt/PrivateOn/vpn-gui/icons/logo.png
+MimeType=
+Name=VPN
+NoDisplay=false
+Path=
+StartupNotify=false
+Terminal=false
+TerminalOptions=
+Type=Application
+X-DBUS-ServiceName=
+X-DBUS-StartupType=none
+X-KDE-SubstituteUID=false
+X-KDE-Username=

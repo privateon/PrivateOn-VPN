@@ -1,0 +1,106 @@
+###
+### Install instruction for PrivateOn-VPN package
+###
+
+## note: these instructions are for OpenSuse version 12.x and 13.x
+## if you are installing on another disto, you will have to use your disto's repository in place of zypper
+
+## note: all the install commands are run as root user!
+
+
+## Step 1.	Install build tools if not already installed, e.g. gcc, make, bison ect
+zypper install -t pattern devel_basis
+zypper install ghc-yaml perl-YAML
+
+
+## Step 2.	If you have downloaded the source files as a release package, skip this step
+## Install GIT client if not already installed
+zypper install git-core
+
+
+## Step 3.	Install dependencies for PrivateOn-VPN package
+zypper install perl-AnyEvent
+zypper install perl-qt4
+zypper install thttpd dnsmasq
+
+
+## Step 4.	At the time of writing, AnyEvent::Fork version 1.2 was the latest release, which unfortunately is broken
+## run:
+cpan install AnyEvent::Fork
+
+## If installation fails with test errors, run the following:
+cd /root/.cpan/build/AnyEvent-Fork-1.2-iyHOck/ ( the 6 characters of the path are unique, yours will differ )
+perl Makefile.PL
+
+## Edit file Fork.pm line 630 with your favorite editor
+    Change line
+      my $perl = $^X;
+    to
+      my $perl;
+make
+make test
+
+## If everything is OK, then run:
+make install
+
+
+## Step 5. 	Install more dependencies
+cpan install AnyEvent::Fork::RPC
+cpan install File::Pid
+cpan install No::Worries::PidFile
+cpan install HTTP::Lite
+cpan install UI::Dialog::Backend::KDialog
+cpan install List::MoreUtils
+cpan install IO::Pty::Easy
+
+
+## Step 6. 	Install service manifests, sudoer configuration and desktop link
+cd /opt/PrivateOn/install/
+cp -p init.d/vpn-monitor /etc/init.d/
+ln -s /etc/init.d/vpn-monitor /usr/sbin/rcvpn-monitor
+cp -pr sudoers* /etc/
+## Replace --USER-- with your user name
+cp -p VPN.desktop /home/--USER--/Desktop/
+
+
+## Step 7. 	Test vpn-monitor installation
+## Run monitor from command as root:
+/opt/PrivateOn/vpn-monitor/vpn_monitor.pl
+
+## Optional step, check monitor log file for errors
+cat /var/log/PrivateOn.log
+
+## If daemon initiates and stays up, press ctrl-C (note: it is normal for the daemon to not output anything to the CLI)
+## Start as daemon
+rcvpn-monitor start
+
+
+## Step 8. 	Test vpn-gui installation
+## Run GUI from command line as root:
+/opt/PrivateOn/vpn-gui/vpn_gui.pl
+
+## If you see an error message "Can't load '--SOME-PATH--/QtCore4.so' for module QtCore4: libperl.so"
+updatedb
+locate libperl.so
+
+## Replace --RESULT-- with result of locate command
+ln -s --RESULT-- /usr/lib64/
+## Or if you are running a 32-bit system, them
+ln -s --RESULT-- /usr/lib/
+
+## Run GUI from command line again:
+/opt/PrivateOn/vpn-gui/vpn_gui.pl
+
+## If you see an error message "SvREFCNT_inc is not exported by the Devel::Peek module
+##  Can't continue after import errors at /usr/lib/perl5/vendor_perl/5.20.1/x86_64-linux-thread-multi/QtGui4.pm line 25."
+## Edit file QtGui4.pm line 25 with your favorite editor
+    Change line
+      use Devel::Peek qw( SvREFCNT_inc );
+    to
+      use Devel::Peek;
+
+
+## Step 9. 	After setup works, install and configure monit to guard that the vpn-monitor is always up
+zypper install monit
+cp -p /opt/PrivateOn/install/ /etc/monitrc
+systemctl daemon-reload

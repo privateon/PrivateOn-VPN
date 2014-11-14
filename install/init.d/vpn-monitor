@@ -1,0 +1,96 @@
+#!/bin/bash
+#
+# PrivateOn-VPN -- Because privacy matters.
+#
+# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# All rights reserved. Use is subject to license terms.
+#
+
+### BEGIN INIT INFO
+# Provides:       vpn-monitor
+# Required-Start: $network $remote_fs
+# Required-Stop:  
+# Default-Start:  3 5
+# Default-Stop:   0 1 2 6
+# Short-Description: VPN connection monitor
+# Description:    Start the vpn-monitor daemon for automatic starting and monitoring of VPN connections
+### END INIT INFO
+
+#
+# Location of the daemon
+#
+DAEMON=/opt/PrivateOn/vpn-monitor/vpn_monitor.pl
+prog=`basename $DAEMON`
+PID_DIR=/var/run/PrivateOn
+PID_FILE=$PID_DIR/vpn-monitor.pid
+SUDO=/usr/bin/sudo
+
+test -x $DAEMON || chmod u+x $DAEMON
+
+. /etc/rc.status
+RETVAL=0
+
+case "$1" in
+	start)
+		if checkproc $DAEMON; then
+			echo "$prog already started. Not starting."
+			exit 0
+		fi
+
+		if [ ! -d PID_DIR ] ; then
+			mkdir -p $PID_DIR
+		fi
+
+		if [ -e $PID_FILE ] ; then
+			echo "Removing stale PID file $PID_FILE."
+			rm -f $PID_FILE
+		fi
+
+		echo -n "Starting $prog daemon"
+		startproc -p $PID_FILE $DAEMON
+		rc_status -v
+		;;
+	stop)
+		echo -n "Shutting down $prog "
+		killproc -t 10 $DAEMON 
+		if [ -e $PID_FILE ] ; then
+			rm -f $PID_FILE
+		fi
+
+		rc_status -v
+		;;
+	try-restart|condrestart)
+		## Do a restart only if the service was active before.
+		## Note: try-restart is now part of LSB (as of 1.9).
+		if test "$1" = "condrestart"; then
+			echo "${attn}Use try-restart ${done}(LSB)${attn}${norm}"
+		fi
+		$0 status
+		if test $? = 0; then
+			$0 restart
+		else
+			rc_reset	# Not running is not a failure.
+		fi
+		# Remember status and be quiet
+		rc_status
+		;;
+	restart)
+		$0 stop
+		$0 start
+
+		rc_status
+		;;
+	status)
+		echo -n "Checking for service $prog "
+		/sbin/checkproc $DAEMON
+		# NOTE: rc_status knows that we called this init script with
+		# "status" option and adapts its messages accordingly.
+		rc_status -v
+		;;
+	*)
+		echo "Usage: $0 {start|stop|status|try-restart|restart}"
+		exit 1
+		;;
+esac
+
+rc_exit

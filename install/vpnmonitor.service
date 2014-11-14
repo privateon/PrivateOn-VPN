@@ -1,0 +1,16 @@
+[Unit]
+Description=PrivateOn VPN Monitor
+Requires=network.monitor
+
+[Service]
+Type=forking
+ExecStart=/sbin/startproc -p /var/run/PrivateOn/vpn-monitor.pid /opt/PrivateOn/vpn-monitor/vpn_monitor.pl
+StandardOutput=null
+Environment=
+ExecStartPre=
+EnvironmentFile=
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target
+Alias=PrivateOnvpnmonitor.service
