@@ -3,7 +3,7 @@ package MainWindow;
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Author: Mikko Rautiainen <info@tietosuojakone.fi>
+# Authors: Mikko Rautiainen & Lei Xue     <info@tietosuojakone.fi>
 #
 # Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
@@ -18,14 +18,14 @@ use QtGui4;
 use QtCore4::isa qw( Qt::MainWindow);
 use QtCore4::slots
 	updateDefaultVpn => [],
-        updateDefaultVpnResume => [],
+	updateDefaultVpnResume => [],
 	turnOffVpn => [],
 	setUserInfo => [],
 	setCountry => ['int'],
 	setServerType => ['int'],
 	setVpn => ['int'],
 	closeEvent => ['Qt::CloseEvent'],
-        reenableButton => [],
+	reenableButton => [],
 	updateStatus => [];
 use Net::DBus qw(:typing);
 use Data::Dumper;
@@ -832,7 +832,7 @@ sub showNetStatus {
 }
 
 sub setUserInfo {
-        $cancelButton->setEnabled(0);
+	$cancelButton->setEnabled(0);
 	my $tmp = getUserInfo();
 	my %userInfo = %$tmp;
 	my $status = this->{statusOutput};
@@ -1179,11 +1179,11 @@ sub updateStatus
 		$net_status .= "Network state changed to NET_UNKNOWN.\n";
 	}
 	if ($tmp_previous == NET_CRIPPLED && $current_status != NET_CRIPPLED) {
-	        $cancelButton->setEnabled(1);
+		$cancelButton->setEnabled(1);
 		$net_status .= "Network restored from safemode.\n";
 	}
 	if ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
-	        $cancelButton->setEnabled(0);
+		$cancelButton->setEnabled(0);
 		$net_status .= "Network placed in safemode, check VPN settings.\n";
 	}
 	if ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
