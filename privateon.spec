@@ -21,7 +21,7 @@
 Name:           privateon
 Packager:       Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 Version:        0.1
-Release:        0
+Release:        1
 Summary:        PrivateOn VPN package
 License:        Open Source
 Group:          Productivity/Networking/Security
@@ -37,7 +37,7 @@ PrivateOn VPN is a robust VPN monitor/manager bundle
 %prep
 
 %install
-mkdir -p %{buildroot}/opt/PrivateOn/vpn-gui/{images,icons} %{buildroot}/opt/PrivateOn/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d
+mkdir -p %{buildroot}/opt/PrivateOn/vpn-gui/{images,icons} %{buildroot}/opt/PrivateOn/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
 for file in vpn-default.ini LICENSE $(find vpn-gui vpn-monitor -type f); do
     cp $file %{buildroot}/opt/PrivateOn/$file
 done
@@ -65,6 +65,7 @@ cp install/sudoers.d/PrivateOn %{buildroot}/etc/sudoers.d/
 /opt/PrivateOn/vpn-monitor/vpn_monitor.pl
 /opt/PrivateOn/vpn-monitor/vpn_retry.pm
 /opt/PrivateOn/vpn-monitor/vpn_uncripple.pm
+%dir /var/run/PrivateOn
 
 %doc
 
