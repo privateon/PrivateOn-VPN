@@ -29,7 +29,11 @@ Url:            http://www.privateon.net
 Source0:        privateon-0.1.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
-Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit
+Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTL-Lite
+
+# Additional packages required, not found in base repos; To be built by us:
+# perl-No-Norries (No::Worries::PidFile)
+# perl-UI-Dialog (UI::Dialog::Backend::KDialog)
 
 %description
 PrivateOn VPN is a robust VPN monitor/manager bundle
