@@ -52,6 +52,9 @@ use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
 	INI_FILE => "/opt/PrivateOn/vpn-default.ini",
 	DEBUG => 1,
+	ENABLE_VPN => 1,
+	ENABLE_DUAL_VPN => 1,
+	ENABLE_TOR_VPN => 0,
 };
 
 # net status
@@ -530,6 +533,7 @@ sub get_countries_for_combobox {
     my $b_text;
 
     # Vanilla VPN connections
+    if (ENABLE_VPN) {
     foreach $c (sort {  $a_text = $a;
 			$a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
 			$b_text = $b;
@@ -549,9 +553,10 @@ sub get_countries_for_combobox {
 	    $i ++;
 	}
 	push @country, $c;
-    }
+    }}
 
     # Dual VPN connections
+    if (ENABLE_DUAL_VPN) {
     foreach $c (sort { # No support for 3 letter countries or digits at the end for now
 		       # Also don't bother with equals since no digits
 		       ($a_start, $a_end) = split('-', $a);
@@ -572,8 +577,9 @@ sub get_countries_for_combobox {
 	}
 	# These can be distinguished by the '-' in the $c
 	push @country, $c;
-    }
+    }}
 
+    if (ENABLE_TOR_VPN) {
     foreach $c (sort {  $a_text = $a;
 			$a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
 			$b_text = $b;
@@ -590,7 +596,7 @@ sub get_countries_for_combobox {
 	    $i++
 	}
 	push @country, ("tor_" . $c);
-    }
+    }}
     if (DEBUG > 0) {
 	print STDERR "get_countries_for_combobox returning " . scalar(@country) . " entries\n";
 	print STDERR "Countries: " . join(", ", @country) . "\n";
