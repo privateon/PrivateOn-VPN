@@ -29,7 +29,7 @@ Url:            http://www.privateon.net
 Source0:        privateon-0.1.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
-Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTL-Lite
+Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils
 
 # Additional packages required, not found in base repos; To be built by us:
 # perl-No-Norries (No::Worries::PidFile)
