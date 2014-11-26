@@ -768,7 +768,7 @@ sub updateDefaultVpnResume
 
 	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 0;
 	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 0;
-	my $ccode = $countrylist->[this->{id_country}];
+	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
 	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
 	my $configfile;
 
