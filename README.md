@@ -1,6 +1,10 @@
 PrivateOn-VPN
 =============
 
-Activate and monitor VPN connections using our server country based selector widget. <BR>
-Converts web-published or user-supplied OpenVPN configuration files to <BR>
-NetworkManager system-connections and selector entries.
+Geographically choose your VPN server and connect to it using the GUI. <BR>
+
+The backend actively monitors the VPN connection via the virtual interface
+file and periodic HTTP-requests to your VPN-provider's API. <BR>
+
+The GUI's update function converts web-published or user-supplied OpenVPN configuration files to 
+NetworkManager system-connections.
