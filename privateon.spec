@@ -51,9 +51,9 @@ PrivateOn VPN is a robust VPN monitor/manager bundle
 %prep
 
 %install
-mkdir -p %{buildroot}/opt/PrivateOn/vpn-gui/{images,icons} %{buildroot}/opt/PrivateOn/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
+mkdir -p %{buildroot}/opt/PrivateOn-VPN/vpn-gui/{images,icons} %{buildroot}/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
 for file in vpn-default.ini LICENSE $(find vpn-gui vpn-monitor -type f); do
-    cp $file %{buildroot}/opt/PrivateOn/$file
+    cp $file %{buildroot}/opt/PrivateOn-VPN/$file
 done
 cp install/vpnmonitor.service %{buildroot}/etc/systemd/system/
 cp install/sudoers.d/PrivateOn %{buildroot}/etc/sudoers.d/
@@ -64,24 +64,24 @@ grep /usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE /etc/ld.so.conf || (ec
 %files
 /etc/sudoers.d/PrivateOn
 /etc/systemd/system/vpnmonitor.service
-/opt/PrivateOn/LICENSE
-/opt/PrivateOn/vpn-default.ini
-/opt/PrivateOn/vpn-gui/MainWindow.pm
-/opt/PrivateOn/vpn-gui/gui.sh
-/opt/PrivateOn/vpn-gui/icons/logo.png
-/opt/PrivateOn/vpn-gui/images/broken.png
-/opt/PrivateOn/vpn-gui/images/logo.png
-/opt/PrivateOn/vpn-gui/images/protected.png
-/opt/PrivateOn/vpn-gui/images/unprotected.png
-/opt/PrivateOn/vpn-gui/vpn_gui.pl
-/opt/PrivateOn/vpn-gui/vpn_install.pm
-/opt/PrivateOn/vpn-gui/vpn_status.pm
-/opt/PrivateOn/vpn-gui/vpn_tray.pm
-/opt/PrivateOn/vpn-monitor/htdocs/index.html
-/opt/PrivateOn/vpn-monitor/vpn_logger.sh
-/opt/PrivateOn/vpn-monitor/vpn_monitor.pl
-/opt/PrivateOn/vpn-monitor/vpn_retry.pm
-/opt/PrivateOn/vpn-monitor/vpn_uncripple.pm
+/opt/PrivateOn-VPN/LICENSE
+/opt/PrivateOn-VPN/vpn-default.ini
+/opt/PrivateOn-VPN/vpn-gui/MainWindow.pm
+/opt/PrivateOn-VPN/vpn-gui/gui.sh
+/opt/PrivateOn-VPN/vpn-gui/icons/logo.png
+/opt/PrivateOn-VPN/vpn-gui/images/broken.png
+/opt/PrivateOn-VPN/vpn-gui/images/logo.png
+/opt/PrivateOn-VPN/vpn-gui/images/protected.png
+/opt/PrivateOn-VPN/vpn-gui/images/unprotected.png
+/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+/opt/PrivateOn-VPN/vpn-gui/vpn_install.pm
+/opt/PrivateOn-VPN/vpn-gui/vpn_status.pm
+/opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
+/opt/PrivateOn-VPN/vpn-monitor/htdocs/index.html
+/opt/PrivateOn-VPN/vpn-monitor/vpn_logger.sh
+/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
+/opt/PrivateOn-VPN/vpn-monitor/vpn_retry.pm
+/opt/PrivateOn-VPN/vpn-monitor/vpn_uncripple.pm
 %dir /var/run/PrivateOn
 
 %doc
