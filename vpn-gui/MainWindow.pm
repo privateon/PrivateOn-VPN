@@ -630,9 +630,21 @@ sub turnOffVpn
 		return 0;
 	}
 
-	my @active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep nordvpn`;
+	# detect nmcli version
+	my @active_lines;
+	my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
+	if (DEBUG > 0) {
+		print STDERR "All active connections\n";
+		$test_string = '/usr/bin/nmcli conn show --active';
+	}
+	if ( system($test_string) == 0 ) {
+		# openSUSE 13.2 uses argument "conn show --active"
+		@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep nordvpn`;
+	} else {
+		# openSUSE 13.1 uses argument "conn status" 
+		@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep nordvpn`;
+	}
 	my @active_conns = ();
-	my $default_vpn_name;
 	foreach my $conn (@active_lines) {
 		if ($conn =~ /(\S+)/) {
 			push @active_conns, $1;
@@ -645,7 +657,6 @@ sub turnOffVpn
 		if ($vpn_name ~~ @active_conns) {
 			try {
 				print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-				$default_vpn_name = $vpn_name;
 				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name && echo \"VPN deactivation successful\"");
 				# wait for connection to close
 				sleep(1);
@@ -694,9 +705,22 @@ sub updateDefaultVpn
 		$status->setTextCursor($cursor);
 		$status->repaint();
 		print "VPN is active, deactivating...\n" if DEBUG > 0;
-		my @active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep nordvpn`;
+
+		# detect nmcli version
+		my @active_lines;
+		my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
+		if (DEBUG > 0) {
+			print STDERR "All active connections\n";
+			$test_string = '/usr/bin/nmcli conn show --active';
+		}
+		if ( system($test_string) == 0 ) {
+			# openSUSE 13.2 uses argument "conn show --active"
+			@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep nordvpn`;
+		} else {
+			# openSUSE 13.1 uses argument "conn status" 
+			@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep nordvpn`;
+		}
 		my @active_conns = ();
-		my $default_vpn_name;
 		foreach my $conn (@active_lines) {
 			if ($conn =~ /(\S+)/) {
 				push @active_conns, $1;
@@ -709,7 +733,6 @@ sub updateDefaultVpn
 			if ($vpn_name ~~ @active_conns) {
 				try {
 					print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-					$default_vpn_name = $vpn_name;
 					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name && echo \"VPN deactivation successful\"");
 					# wait for connection to close
 					sleep(1);
