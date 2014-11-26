@@ -30,10 +30,20 @@ Source0:        privateon-0.1.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
 Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils
+# Sadly, openSUSE at this time provides only 3.72 (Workaround for perl 5.20 bug needs 3.73)
+# perl-common-sense >= 3.73
 
 # Additional packages required, not found in base repos; To be built by us:
 # perl-No-Norries (No::Worries::PidFile)
 # perl-UI-Dialog (UI::Dialog::Backend::KDialog)
+# perl-Guard (Guard)
+# perl-AnyEvent-Fork-RPC (AnyEvent::Fork::RPC)
+# perl-IO-Pty-Easy (IO::Pty::Easy)
+
+# Additionally:
+#"SvREFCNT_inc" is not exported by the Devel::Peek module
+#Can't continue after import errors at /usr/lib/perl5/vendor_perl/5.20.1/x86_64-linux-thread-multi/QtGui4.pm line 25.
+# To remedy this problem, simply remove the qw(svREFCNT_inc) from the line (It's not needed anyway)
 
 %description
 PrivateOn VPN is a robust VPN monitor/manager bundle
