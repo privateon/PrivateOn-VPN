@@ -55,7 +55,7 @@ cpan install IO::Pty::Easy
 
 
 ## Step 6. 	Install service manifests, sudoer configuration and desktop link
-cd /opt/PrivateOn/install/
+cd /opt/PrivateOn-VPN/install/
 cp -p init.d/vpn-monitor /etc/init.d/
 ln -s /etc/init.d/vpn-monitor /usr/sbin/rcvpn-monitor
 cp -pr sudoers* /etc/
@@ -65,7 +65,7 @@ cp -p VPN.desktop /home/--USER--/Desktop/
 
 ## Step 7. 	Test vpn-monitor installation
 ## Run monitor from command as root:
-/opt/PrivateOn/vpn-monitor/vpn_monitor.pl
+/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
 
 ## Optional step, check monitor log file for errors
 cat /var/log/PrivateOn.log
@@ -77,7 +77,7 @@ rcvpn-monitor start
 
 ## Step 8. 	Test vpn-gui installation
 ## Run GUI from command line as root:
-/opt/PrivateOn/vpn-gui/vpn_gui.pl
+/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
 ## If you see an error message "Can't load '--SOME-PATH--/QtCore4.so' for module QtCore4: libperl.so"
 updatedb
@@ -89,7 +89,7 @@ ln -s --RESULT-- /usr/lib64/
 ln -s --RESULT-- /usr/lib/
 
 ## Run GUI from command line again:
-/opt/PrivateOn/vpn-gui/vpn_gui.pl
+/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
 ## If you see an error message "SvREFCNT_inc is not exported by the Devel::Peek module
 ##  Can't continue after import errors at /usr/lib/perl5/vendor_perl/5.20.1/x86_64-linux-thread-multi/QtGui4.pm line 25."
@@ -102,5 +102,5 @@ ln -s --RESULT-- /usr/lib/
 
 ## Step 9. 	After setup works, install and configure monit to guard that the vpn-monitor is always up
 zypper install monit
-cp -p /opt/PrivateOn/install/ /etc/monitrc
+cp -p /opt/PrivateOn-VPN/install/monitrc /etc/monitrc
 systemctl daemon-reload

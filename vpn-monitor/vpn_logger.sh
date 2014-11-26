@@ -9,7 +9,7 @@
 #
 
 #
-# /opt/PrivateOn/vpn-monitor/vpn_logger.sh	Writes system V style log file on systemd distributions
+#  vpn-monitor/vpn_logger.sh     Writes system V style log file on systemd distributions
 #
 
 

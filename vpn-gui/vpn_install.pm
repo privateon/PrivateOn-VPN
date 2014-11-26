@@ -178,7 +178,7 @@ sub getCountryList
 sub add_connections 
 {
 	my ($username, $password) = @_;
-        my $return_code = 0;
+	my $return_code = 0;
 
 	my $filelist = getCountryList();
 	return 2 if (not defined $filelist);

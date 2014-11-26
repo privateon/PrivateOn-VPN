@@ -9,7 +9,7 @@
 #
 
 #
-#		/opt/PrivateOn/vpn-gui/vpn_gui.pl
+#		/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 #
 #   Vpn-gui is the front-end for the vpn-monitor daemon.
 #   This application is used to change the selected VPN server.
@@ -25,20 +25,20 @@
 #use warnings;
 use QtCore4;
 use QtGui4;
-use lib "/opt/PrivateOn/vpn-gui";
+use lib "/opt/PrivateOn-VPN/vpn-gui";
 use MainWindow;
 use vpn_tray;
 
 sub main
 {
-    my $app = Qt::Application(\@ARGV);
-    my $window = MainWindow();
-    my $tray = vpn_tray($window);
+	my $app = Qt::Application(\@ARGV);
+	my $window = MainWindow();
+	my $tray = vpn_tray($window);
 
-    if ( defined($ARGV[0]) && ($ARGV[0] eq '1') ) {
-        $window->show();
-    }
-    return $app->exec();
+	if ( defined($ARGV[0]) && ($ARGV[0] eq '1') ) {
+		$window->show();
+	}
+	return $app->exec();
 }
 
 exit main();

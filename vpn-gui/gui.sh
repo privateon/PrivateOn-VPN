@@ -9,15 +9,16 @@
 #
 
 #
-# /opt/PrivateOn/vpn-gui/gui.sh		This script closes other vpn-gui instances and starts a new instance
+#  vpn-gui/gui.sh     This script closes other vpn-gui instances and starts a new instance
 #
-#  Note: This script must be run with root credentials, preferably using sudo.
+#   Note: This script must be run with root credentials, preferably using sudo.
 #
 
+DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
-PID=`ps aux | grep /opt/PrivateOn/vpn-gui/vpn_gui.pl | grep -v grep | awk 'NR<2 {print $2}'`
+PID=`ps aux | grep $DAEMON | grep -v grep | awk 'NR<2 {print $2}'`
 if [ ! -z "$PID" ]; then
 	kill -9 $PID
 fi
 
-/opt/PrivateOn/vpn-gui/vpn_gui.pl 1 
+$DAEMON 1 

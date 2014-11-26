@@ -50,7 +50,7 @@ my $default_ccode;
 
 use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
-	INI_FILE => "/opt/PrivateOn/vpn-default.ini",
+	INI_FILE => "/opt/PrivateOn-VPN/vpn-default.ini",
 	DEBUG => 1,
 	ENABLE_VPN => 1,
 	ENABLE_DUAL_VPN => 1,

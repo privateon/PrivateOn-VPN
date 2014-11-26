@@ -8,7 +8,7 @@ package vpn_status;
 #
 
 #
-# /opt/PrivateOn/vpn-gui/vpn_status.pm     Communication from GUI to the backend daemon
+#  vpn-gui/vpn_status.pm     Communication from GUI to the backend daemon
 #
 
 

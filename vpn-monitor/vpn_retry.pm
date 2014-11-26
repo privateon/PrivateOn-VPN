@@ -18,7 +18,7 @@ use AnyEvent::Log;
 
 use constant {
 	LOG_FILE      => "/var/log/PrivateOn.log",
-	INI_FILE      => "/opt/PrivateOn/vpn-default.ini",
+	INI_FILE      => "/opt/PrivateOn-VPN/vpn-default.ini",
 	VERSION       => "0.9",
 	DEBUG         => 2
 };
