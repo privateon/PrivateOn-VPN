@@ -205,13 +205,27 @@ sub write_url_to_ini_file
 		print STDERR "Unable to open " . INI_FILE . " for writing. Reason: " . $! . "\n";
 		return 1;
 	}
+	
 	# update ini
+	my $has_been_written = 0;
 	foreach my $line (@vpn_ini_lines) {
 		if ($line =~ /url/) {
-			print VPN_INI "url=$url\n";
+			if ($has_been_written == 0) {
+				print VPN_INI "url=$url\n";
+				$has_been_written = 1;
+			}
+		} elsif ($line =~ /monitor/) {
+			if ($has_been_written == 0) {
+				print VPN_INI "url=$url\n";
+				$has_been_written = 1;
+			}
+			print VPN_INI $line;
 		} else {
 			print VPN_INI $line;
 		}
+	}
+	if ($has_been_written == 0) {
+		print VPN_INI "url=$url\n";
 	}
 	close VPN_INI;
 
