@@ -10,39 +10,45 @@ package vpn_install;
 #
 
 use strict;
-#use warnings;
+use warnings;
 use Getopt::Long;
-$::DEBUG = 1;
 
 sub import{
 	no strict 'refs';
 	foreach (@_) {
-	*{"MainWindow::$_"}=\&$_;
+	   *{"MainWindow::$_"}=\&$_;
 	 }
 }
 
-my $configfile = "https://nordvpn.com/api/files/zip";
-#my $configfile = "https://nordvpn.com/files/config.zip";
-my %list = ();
+use constant {
+	CONFIG_URL   => "https://nordvpn.com/api/files/zip",
+	INI_FILE     => "/opt/PrivateOn-VPN/vpn-default.ini",
+	URL_FILE     => "Check-VPN-status-API.url",
+	TMP_PATH     => "/tmp/vpn_install/",
+	DEBUG        => 1
+};
+
 
 sub get_latest_server_list
 {
-	system("/usr/bin/rm -fr /tmp/vpn_install/");
-	system("/usr/bin/mkdir -p /tmp/vpn_install/");
-	system("/usr/bin/wget --output-document=/tmp/vpn_install/config.zip $configfile");
-	system("/usr/bin/unzip /tmp/vpn_install/config.zip -d /tmp/vpn_install/");
+	system("/usr/bin/rm -fr " . TMP_PATH);
+	system("/usr/bin/mkdir -p " . TMP_PATH);
+	system("/usr/bin/wget --output-document=" . TMP_PATH . "config.zip " . CONFIG_URL);
+	system("/usr/bin/unzip " . TMP_PATH . "config.zip -d " . TMP_PATH);
 
 	# rename files
-	system("cd /tmp/vpn_install/ && rename -v _nordvpn .nordvpn *.ovpn");
-	system("cd /tmp/vpn_install/ && rename -v  _ - *.ovpn");
-	system("cd /tmp/vpn_install/ && rename -v  _ - *.ovpn");
-	system("cd /tmp/vpn_install/ && rename -v  _ - *.ovpn");
-	system("sync")
-#	system("rename -v _nordvpn .nordvpn /tmp/vpn_install/*.ovpn");
-#	system("rename -v  _ - /tmp/vpn_install/*.ovpn");
-#	system("rename -v  _ - /tmp/vpn_install/*.ovpn");
-#	system("rename -v  _ - /tmp/vpn_install/*.ovpn");
+	system("cd " . TMP_PATH . " && rename -v _nordvpn .nordvpn *.ovpn");
+	system("cd " . TMP_PATH . " && rename -v  _ - *.ovpn");
+	system("cd " . TMP_PATH . " && rename -v  _ - *.ovpn");
+	system("cd " . TMP_PATH . " && rename -v  _ - *.ovpn");
+	system("cd " . TMP_PATH . " && rename -v vpn. '' vpn.*.ovpn >/dev/null 2>&1");
+	system("sync");
+
+	write_url_to_ini_file();
+
+	return 0;
 }
+
 
 sub add_one_connection
 {
@@ -163,17 +169,69 @@ sub add_one_connection
 	return $return_code;
 }
 
+
 ### helper functions
+
+sub write_url_to_ini_file
+{
+	## next line is only for testing purposes
+	system("echo -n \"http://api.nordvpn.com/vpn/check\" > /tmp/vpn_install/Check-VPN-status-API.url");
+
+	my $url = "";
+	if (-e TMP_PATH . URL_FILE) {
+		print STDERR "Url file " . TMP_PATH . URL_FILE . " found\n" if DEBUG > 0;
+		if (open(my $fh, '<:encoding(UTF-8)', TMP_PATH . URL_FILE)) {
+			$url = <$fh>;
+			chomp $url;
+		} else {
+			print STDERR "Could not open file " . TMP_PATH . URL_FILE . " Reason: " . $! . "\n";
+			return 1;
+		}
+	} else {
+		print STDERR "Url file " . TMP_PATH . URL_FILE . " not found\n" if DEBUG > 0;
+		print STDERR "Skipping INI file update.\n\n" if DEBUG > 0;
+		return 1;
+	}
+
+	# continue to file if we got this far
+	my $vpn_ini;
+	unless (open $vpn_ini, "<" . INI_FILE) {
+		print STDERR "Unable to open " . INI_FILE . " for reading. Reason: " . $! . "\n";
+		return 1;
+	}
+	my @vpn_ini_lines = <$vpn_ini>;
+	close $vpn_ini;
+	unless (open VPN_INI, ">" . INI_FILE) {
+		print STDERR "Unable to open " . INI_FILE . " for writing. Reason: " . $! . "\n";
+		return 1;
+	}
+	# update ini
+	foreach my $line (@vpn_ini_lines) {
+		if ($line =~ /url/) {
+			print VPN_INI "url=$url\n";
+		} else {
+			print VPN_INI $line;
+		}
+	}
+	close VPN_INI;
+
+	print STDERR "Wrote $url to ini file.\n" if DEBUG > 0;
+
+	return 0;
+}
+
+
 sub getCountryList
 {
 	my $return_code = get_latest_server_list();
 	return undef if ($return_code != 0);
-	opendir my $dir, "/tmp/vpn_install/" or return;
+	opendir my $dir, TMP_PATH or return;
 	my @tmplist = readdir $dir;
 	closedir $dir;
 
 	return \@tmplist;
 }
+
 
 sub add_connections 
 {
@@ -181,23 +239,34 @@ sub add_connections
 	my $return_code = 0;
 
 	my $filelist = getCountryList();
-	return 2 if (not defined $filelist);
-
+	if (defined $filelist) {
+		print STDERR "Filelist populated\n" if DEBUG > 0;
+	} else {
+		print STDERR "Filelist empty - exiting install\n" if DEBUG > 0;
+		return 2
+	} 
 	system("/usr/bin/mkdir -p /etc/ca-certificates/");
 	
+	my $vpn_count = 0;
 	foreach my $file (@$filelist) {
 		if ($file =~ /(double-(\w{2})|tor|vpn)-([a-z][a-z][a-z0-9]?)\.nordvpn-(tcp|udp)\.ovpn/i) {
-			system("/usr/bin/cp /tmp/vpn_install/$file /etc/openvpn/");
+			system("/usr/bin/cp " . TMP_PATH . "$file /etc/openvpn/");
 			my $countrycode = $3;
 			my $stype = $4;
-			print STDERR "Adding $file\n" if $::DEBUG > 1;
+			print STDERR "Adding $file\n" if DEBUG > 0;
 			my $return_tmp = add_one_connection("/etc/openvpn/$file", $countrycode, $stype, $username, $password);
 			if ($return_tmp > $return_code) { 
 				$return_code = $return_tmp; 
 			}
-			$list{"/etc/openvpn/$file"} = 1;
+			$vpn_count++;
 		}
 	}
+
+	if ($vpn_count == 0) {
+		print STDERR "No openVPN files found with the correct name scheme.\n" if DEBUG > 0;
+		print STDERR "Check filenames in directory " . TMP_PATH . "\n" if DEBUG > 0;
+		return 2
+	} 
 
 	return $return_code;
 }
