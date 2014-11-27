@@ -41,13 +41,6 @@ sub get_latest_server_list
 	system("/usr/bin/mkdir -p " . TMP_PATH);
 	system("/usr/bin/wget --output-document=" . TMP_PATH . "config.zip " . CONFIG_URL);
 	system("/usr/bin/unzip " . TMP_PATH . "config.zip -d " . TMP_PATH);
-
-	# rename files
-	system("cd " . TMP_PATH . " && rename -v _nordvpn .nordvpn *.ovpn");
-	system("cd " . TMP_PATH . " && rename -v  _ - *.ovpn");
-	system("cd " . TMP_PATH . " && rename -v  _ - *.ovpn");
-	system("cd " . TMP_PATH . " && rename -v  _ - *.ovpn");
-	system("cd " . TMP_PATH . " && rename -v vpn. '' vpn.*.ovpn >/dev/null 2>&1");
 	system("sync");
 
 	write_url_to_ini_file();
@@ -269,9 +262,9 @@ sub add_connections
 	
 	my $vpn_count = 0;
 	foreach my $file (@$filelist) {
-		if ($file =~ /(double-(\w{2})|tor|vpn)-([a-z][a-z][a-z0-9]?)\.nordvpn-(tcp|udp)\.ovpn/i) {
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
 			system("/usr/bin/cp " . TMP_PATH . "$file /etc/openvpn/");
-			my $countrycode = $3;
+			my $countrycode = $2;
 			my $stype = $4;
 			print STDERR "Adding $file\n" if DEBUG > 0;
 			my $return_tmp = add_one_connection("/etc/openvpn/$file", $countrycode, $stype, $username, $password);

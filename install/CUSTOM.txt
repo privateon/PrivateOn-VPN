@@ -27,21 +27,24 @@ and it will not be available in the GUI.
 
 
 The file name is comprised of 4 elements. 
-All elements are mandatory. 
+All elements are mandatory. Server number is optional.
 The elements are separated using the minus sign “-”.
 
 Allowed keywords:
 	Type = 		vpn  /  tor  /  double
 	Country = 	lower case ISO 3166-1 alpha-2
 				/  ISO  “+” ISO   *
-	Server number: 	1 - 9
-	Comment: 	description of your choosing   **
+	Server number: 	0 - 9   **
+	Comment: 	description of your choosing   ***
 	Transport: 	tcp  /  udp
 
 * For country codes see http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
 
-** The comment can include any character except the minus sign “-” and dot “.”
-We also recommend not using space or other escaped characters.
+** This field enumerates the servers within a country. 
+This field is optional.
+
+*** The comment can include any character except the minus sign “-”.
+We also recommend not using dot, space or other escaped characters.
 
 
 You can use an online regex tool to check your file name.
@@ -52,19 +55,19 @@ Here is the regular expression we use to parse the file name:
 Example 1.
 vpn-aq9-My_s3cr3t_vpn-tcp.ovpn
 
-Type: 		normal VPN
+Type: 		Normal VPN
 Country: 	Antarctica
-Server number: 9
+Server number: 	9
 Comment:  	My_s3cr3t_vpn
 Transport:	TCP
 
 
 Example 2.
-double-at+nl9-comment-udp.ovpn
+double-at+nl2-comment-udp.ovpn
 nordvpn-tcp.ovpn
 
-Type: 		normal VPN
-Countries: 	first Austria then Netherlands
-Server number: 1
+Type: 		Double VPN
+Countries: 	First Austria then Netherlands
+Server number: 	2
 Comment:  	comment
 Transport:	first leg UDP
