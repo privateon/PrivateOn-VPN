@@ -25,12 +25,18 @@ use constant {
 	INI_FILE     => "/opt/PrivateOn-VPN/vpn-default.ini",
 	URL_FILE     => "Check-VPN-status-API.url",
 	TMP_PATH     => "/tmp/vpn_install/",
+	CUSTOMIZE    => 0,
 	DEBUG        => 1
 };
 
 
 sub get_latest_server_list
 {
+	if (CUSTOMIZE == 1) {
+		system("/usr/bin/mkdir -p " . TMP_PATH);
+		return 0;
+	}
+
 	system("/usr/bin/rm -fr " . TMP_PATH);
 	system("/usr/bin/mkdir -p " . TMP_PATH);
 	system("/usr/bin/wget --output-document=" . TMP_PATH . "config.zip " . CONFIG_URL);
