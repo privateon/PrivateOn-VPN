@@ -29,16 +29,19 @@ Url:            http://www.privateon.net
 Source0:        privateon-0.1.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
-Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils
+Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils \
+    perl-Guard perl-IO-Pty-Easy perl-UI-Dialog
 # Sadly, openSUSE at this time provides only 3.72 (Workaround for perl 5.20 bug needs 3.73)
 # perl-common-sense >= 3.73
 
-# Additional packages required, not found in base repos; To be built by us:
-# perl-No-Norries (No::Worries::PidFile)
+# There are available from the standard perl devel repo;
 # perl-UI-Dialog (UI::Dialog::Backend::KDialog)
 # perl-Guard (Guard)
-# perl-AnyEvent-Fork-RPC (AnyEvent::Fork::RPC)
 # perl-IO-Pty-Easy (IO::Pty::Easy)
+
+# Additional packages required, not found in base repos; To be built by us:
+# perl-AnyEvent-Fork-RPC (AnyEvent::Fork::RPC)
+# perl-No-Norries (No::Worries::PidFile)
 
 # Additionally:
 #"SvREFCNT_inc" is not exported by the Devel::Peek module
