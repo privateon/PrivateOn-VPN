@@ -1,0 +1,70 @@
+﻿###
+###	Instructions for using your own OpenVPN configuration
+###	files with PrivateOn-VPN.
+###
+
+
+#### 		Change constant CUSTOMIZE		####
+
+To use custom ovpn definitions instead of web-published lists, 
+change the following line in vpn-gui/vpn_install.pm
+from
+	CUSTOMIZE    => 0,
+to 
+	CUSTOMIZE    => 1,
+
+Copy your ovpn-files into /tmp/vpn_install/
+
+
+
+####		   File naming guide			####
+
+PrivateOn-VPN uses the ovpn-file's name to identify the vpn-type, 
+country iso code and ucp/tcp choice.
+If the file name does not meet the following requirements, 
+the program will not import that openVPN file 
+and it will not be available in the GUI.
+
+
+The file name is comprised of 4 elements. 
+All elements are mandatory. 
+The elements are separated using the minus sign “-”.
+
+Allowed keywords:
+	Type = 		vpn  /  tor  /  double
+	Country = 	lower case ISO 3166-1 alpha-2
+				/  ISO  “+” ISO   *
+	Server number: 	1 - 9
+	Comment: 	description of your choosing   **
+	Transport: 	tcp  /  udp
+
+* For country codes see http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
+
+** The comment can include any character except the minus sign “-” and dot “.”
+We also recommend not using space or other escaped characters.
+
+
+You can use an online regex tool to check your file name.
+Here is the regular expression we use to parse the file name:
+^(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn$
+
+
+Example 1.
+vpn-aq9-My_s3cr3t_vpn-tcp.ovpn
+
+Type: 		normal VPN
+Country: 	Antarctica
+Server number: 9
+Comment:  	My_s3cr3t_vpn
+Transport:	TCP
+
+
+Example 2.
+double-at+nl9-comment-udp.ovpn
+nordvpn-tcp.ovpn
+
+Type: 		normal VPN
+Countries: 	first Austria then Netherlands
+Server number: 1
+Comment:  	comment
+Transport:	first leg UDP
