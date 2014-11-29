@@ -51,21 +51,21 @@ sub get_latest_server_list
 
 sub add_one_connection
 {
-	my ($configfile, $ccode, $type, $username, $password) = @_;
+	my ($configfile, $kind, $ccode, $comment, $type, $username, $password) = @_;
 	my $return_code = 0;
+	my $sysconnections = "/etc/NetworkManager/system-connections/";
+
+	# Generate UUID
 	my $uuid = `/usr/bin/uuidgen`;
 	$uuid =~ s/\n$//;
-	my $reconfig = 1;
-	my $sysconnections = "/etc/NetworkManager/system-connections/";
-	my $kind = "vpn";
-	if ($configfile =~ /(double-(\w{2})|vpn|tor)-[a-z][a-z][a-z0-9]?\.nordvpn/) {
-		$kind = $1;
-	}
-	if (-e $sysconnections."$kind-$ccode.nordvpn-$type") {
-			open IN, $sysconnections."$kind-$ccode.nordvpn-$type" or $return_code = 1;
+
+	# Reuse old UUID if found
+	if (-e $sysconnections."$kind-$ccode-$comment-$type") {
+			open IN, $sysconnections."$kind-$ccode-$comment-$type" or $return_code = 1;
 			while (<IN>) {
 				if (/^uuid=(\S+)/) {
 					$uuid = $1;
+					print STDERR "     Reusing UUID $uuid\n" if DEBUG > 0;
 					last;
 				} else {
 					next;
@@ -74,96 +74,97 @@ sub add_one_connection
 			close IN;
 	}
 
-	if ($reconfig == 1) {
-		open my $config, $configfile or return 2;
-		if ($configfile =~ /(double-(\w{2})|vpn|tor)-$ccode.nordvpn-$type/) {
-			my $kind = $1;
-			my %params = ();
-			open my $nmconfig, ">$sysconnections".$kind."-$ccode.nordvpn-$type" or $return_code = 1;
-			$params{id} = "$kind-$ccode.nordvpn-$type";
-			$params{uuid} = $uuid;
-			$params{type} = "vpn";
-			$params{service_type} = "org.freedesktop.NetworkManager.openvpn";
-			$params{ta_dir} = "1";
-			$params{connection_type} = "password";
-			$params{password_flags} = "0";
-			$params{password} = $password;
-			$params{username} = $username;
-			$params{tap_dev} = "no";
-			$params{ca} = "/etc/ca-certificates/$kind-$ccode.nordvpn-$type.ca";
-			$params{ta} = "/etc/ca-certificates/$kind-$ccode.nordvpn-$type.auth";
-			my @contents = <$config>;
-			my $content = join('', @contents);
-			foreach my $line (@contents) {
-			   if ($line =~ /^comp-lzo/) {
-				   $params{comp_lzo} = "yes";
-			   } elsif ($line =~ /^proto\s(tcp|udp)/) {
-				   if ($1 eq "tcp") {
-					   $params{proto_tcp} = "yes";
-				   } else {
-					   $params{proto_tcp} = "no";
-				   }
-			   } elsif ($line =~ /^mssfix/) {
-				   $params{mssfix} = "yes";
-			   } elsif ($line =~ /^tun-mtu\s([0-9]+)/) {
-				   $params{tun_mtu} = $1;
-			   } elsif ($line =~ /^cipher\s(\S+)/) {
-				   $params{cipher} = $1;
-			   } elsif ($line =~ /^remote\s([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s([0-9]+)/ ) {
-				   $params{remote} = $1;
-				   $params{port} = $2;
-			   }
+	# Read openVPN file
+	open my $config, $configfile or return 2;
+	my %params = ();
+	$params{id} = "$kind-$ccode-$comment-$type";
+	$params{uuid} = $uuid;
+	$params{type} = "vpn";
+	$params{service_type} = "org.freedesktop.NetworkManager.openvpn";
+	$params{ta_dir} = "1";
+	$params{connection_type} = "password";
+	$params{password_flags} = "0";
+	$params{password} = $password;
+	$params{username} = $username;
+	$params{tap_dev} = "no";
+	$params{ca} = "/etc/ca-certificates/$kind-$ccode-$comment-$type.ca";
+	$params{ta} = "/etc/ca-certificates/$kind-$ccode-$comment-$type.auth";
+	my @contents = <$config>;
+	my $content = join('', @contents);
+	foreach my $line (@contents) {
+		if ($line =~ /^comp-lzo/) {
+			$params{comp_lzo} = "yes";
+		} elsif ($line =~ /^proto\s(tcp|udp)/) {
+			if ($1 eq "tcp") {
+				$params{proto_tcp} = "yes";
+			} else {
+				$params{proto_tcp} = "no";
 			}
-			if ($content =~ /<ca>(.*)<\/ca>/s) {
-				open my $ca_file, ">$params{ca}" or $return_code = 1;
-				print $ca_file $1."\n";
-				close $ca_file;
-			}
-			if ($content =~ /<tls-auth>(.*)<\/tls-auth>/s) {
-				open my $ta_file, ">$params{ta}" or $return_code = 1;
-				print $ta_file $1."\n";
-				close $ta_file;
-			}
-
-			print $nmconfig "[connection]\n";
-			print $nmconfig "id=$params{id}\n";
-			print $nmconfig "uuid=$params{uuid}\n";
-			print $nmconfig "type=vpn\n";
-			print $nmconfig "autoconnect=false\n";
-			print $nmconfig "zone=\n";
-			print $nmconfig "\n";
-			print $nmconfig "[vpn]\n";
-			print $nmconfig "service-type=$params{service_type}\n";
-			print $nmconfig "ta-dir=$params{ta_dir}\n";
-			print $nmconfig "connection-type=$params{connection_type}\n";
-			print $nmconfig "password-flags=$params{password_flags}\n";
-			print $nmconfig "remote=$params{remote}\n";
-			print $nmconfig "cipher=$params{cipher}\n";
-			print $nmconfig "comp-lzo=$params{comp_lzo}\n";
-			print $nmconfig "proto-tcp=$params{proto_tcp}\n";
-			print $nmconfig "tap-dev=$params{tap_dev}\n";
-			print $nmconfig "tunnel-mtu=$params{tun_mtu}\n";
-			print $nmconfig "port=$params{port}\n";
-			print $nmconfig "mssfix=$params{mssfix}\n";
-			print $nmconfig "username=$params{username}\n";
-			print $nmconfig "ca=$params{ca}\n";
-			print $nmconfig "ta=$params{ta}\n";
-			print $nmconfig "\n";
-			print $nmconfig "[vpn-secrets]\n";
-			print $nmconfig "password=$params{password}\n";
-			print $nmconfig "\n";
-			print $nmconfig "[ipv6]\n";
-			print $nmconfig "method=ignore\n";
-			print $nmconfig "ip6-privacy=0\n";
-			print $nmconfig "\n";
-			print $nmconfig "[ipv4]\n";
-			print $nmconfig "method=auto\n";
-			print $nmconfig "may-fail=false\n";
-			close $nmconfig;
-			system("/usr/bin/chmod 600 $sysconnections$kind-$ccode.nordvpn-$type");
+		} elsif ($line =~ /^mssfix/) {
+			$params{mssfix} = "yes";
+		} elsif ($line =~ /^tun-mtu\s([0-9]+)/) {
+			$params{tun_mtu} = $1;
+		} elsif ($line =~ /^cipher\s(\S+)/) {
+			$params{cipher} = $1;
+		} elsif ($line =~ /^remote\s([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s([0-9]+)/ ) {
+			$params{remote} = $1;
+			$params{port} = $2;
 		}
-		close $config;
 	}
+	close $config;
+
+	# Write ca file
+	if ($content =~ /<ca>(.*)<\/ca>/s) {
+		open my $ca_file, ">$params{ca}" or $return_code = 1;
+		print $ca_file $1."\n";
+		close $ca_file;
+	}
+
+	# Write auth file
+ 	if ($content =~ /<tls-auth>(.*)<\/tls-auth>/s) {
+		open my $ta_file, ">$params{ta}" or $return_code = 1;
+		print $ta_file $1."\n";
+		close $ta_file;
+	}
+
+	# write NM system connection file
+	open my $nmconfig, ">$sysconnections".$kind."-$ccode-$comment-$type" or $return_code = 1;
+	print $nmconfig "[connection]\n";
+	print $nmconfig "id=$params{id}\n";
+	print $nmconfig "uuid=$params{uuid}\n";
+	print $nmconfig "type=vpn\n";
+	print $nmconfig "autoconnect=false\n";
+	print $nmconfig "zone=\n";
+	print $nmconfig "\n";
+	print $nmconfig "[vpn]\n";
+	print $nmconfig "service-type=$params{service_type}\n";
+	print $nmconfig "ta-dir=$params{ta_dir}\n";
+	print $nmconfig "connection-type=$params{connection_type}\n";
+	print $nmconfig "password-flags=$params{password_flags}\n";
+	print $nmconfig "remote=$params{remote}\n";
+	print $nmconfig "cipher=$params{cipher}\n";
+	print $nmconfig "comp-lzo=$params{comp_lzo}\n";
+	print $nmconfig "proto-tcp=$params{proto_tcp}\n";
+	print $nmconfig "tap-dev=$params{tap_dev}\n";
+	print $nmconfig "tunnel-mtu=$params{tun_mtu}\n";
+	print $nmconfig "port=$params{port}\n";
+	print $nmconfig "mssfix=$params{mssfix}\n";
+	print $nmconfig "username=$params{username}\n";
+	print $nmconfig "ca=$params{ca}\n";
+	print $nmconfig "ta=$params{ta}\n";
+	print $nmconfig "\n";
+	print $nmconfig "[vpn-secrets]\n";
+	print $nmconfig "password=$params{password}\n";
+	print $nmconfig "\n";
+	print $nmconfig "[ipv6]\n";
+	print $nmconfig "method=ignore\n";
+	print $nmconfig "ip6-privacy=0\n";
+	print $nmconfig "\n";
+	print $nmconfig "[ipv4]\n";
+	print $nmconfig "method=auto\n";
+	print $nmconfig "may-fail=false\n";
+	close $nmconfig;
+	system("/usr/bin/chmod 600 $sysconnections$kind-$ccode-$comment-$type");
 
 	return $return_code;
 }
@@ -192,7 +193,7 @@ sub write_url_to_ini_file
 		return 1;
 	}
 
-	# continue to file if we got this far
+	# continue to read ini file if we got this far
 	my $vpn_ini;
 	unless (open $vpn_ini, "<" . INI_FILE) {
 		print STDERR "Unable to open " . INI_FILE . " for reading. Reason: " . $! . "\n";
@@ -200,12 +201,12 @@ sub write_url_to_ini_file
 	}
 	my @vpn_ini_lines = <$vpn_ini>;
 	close $vpn_ini;
+
+	# update ini
 	unless (open VPN_INI, ">" . INI_FILE) {
 		print STDERR "Unable to open " . INI_FILE . " for writing. Reason: " . $! . "\n";
 		return 1;
-	}
-	
-	# update ini
+	}	
 	my $has_been_written = 0;
 	foreach my $line (@vpn_ini_lines) {
 		if ($line =~ /url/) {
@@ -264,10 +265,12 @@ sub add_connections
 	foreach my $file (@$filelist) {
 		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
 			system("/usr/bin/cp " . TMP_PATH . "$file /etc/openvpn/");
+			my $kind = $1;
 			my $countrycode = $2;
+			my $comment = $3;
 			my $stype = $4;
 			print STDERR "Adding $file\n" if DEBUG > 0;
-			my $return_tmp = add_one_connection("/etc/openvpn/$file", $countrycode, $stype, $username, $password);
+			my $return_tmp = add_one_connection("/etc/openvpn/$file", $kind, $countrycode, $comment, $stype, $username, $password);
 			if ($return_tmp > $return_code) { 
 				$return_code = $return_tmp; 
 			}
