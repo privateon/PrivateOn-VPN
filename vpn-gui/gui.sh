@@ -18,7 +18,11 @@ DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
 PID=`ps aux | grep $DAEMON | grep -v grep | awk 'NR<2 {print $2}'`
 if [ ! -z "$PID" ]; then
-	kill -9 $PID
+	sudo kill -9 $PID
 fi
 
-$DAEMON 1 
+export DISPLAY=:0.0
+export XAUTHORITY=$HOME/.Xauthority
+xhost SI:localuser:root
+
+sudo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY $DAEMON 1 
