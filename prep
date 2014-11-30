@@ -12,3 +12,4 @@ rm -rf privateon-${VERSION} privateon-${VERSION}.tar
 mkdir privateon-${VERSION}
 cp -r install  LICENSE  vpn-default.ini  vpn-gui vpn-monitor privateon-${VERSION}
 tar -cf privateon-${VERSION}.tar privateon-${VERSION}
+cp -f privateon-${VERSION}.tar ~/rpmbuild/SOURCES

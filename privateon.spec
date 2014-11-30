@@ -21,7 +21,7 @@
 Name:           privateon
 Packager:       Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 Version:        0.1
-Release:        1
+Release:        4
 Summary:        PrivateOn VPN package
 License:        Open Source
 Group:          Productivity/Networking/Security
@@ -29,8 +29,7 @@ Url:            http://www.privateon.net
 Source0:        privateon-0.1.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
-Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils \
-    perl-Guard perl-IO-Pty-Easy perl-UI-Dialog
+Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils perl-Guard perl-IO-Pty-Easy perl-UI-Dialog
 # Sadly, openSUSE at this time provides only 3.72 (Workaround for perl 5.20 bug needs 3.73)
 # perl-common-sense >= 3.73
 
@@ -52,6 +51,7 @@ Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-
 PrivateOn VPN is a robust VPN monitor/manager bundle
 
 %prep
+%setup
 
 %install
 mkdir -p %{buildroot}/opt/PrivateOn-VPN/vpn-gui/{images,icons} %{buildroot}/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
@@ -62,7 +62,7 @@ cp install/vpnmonitor.service %{buildroot}/etc/systemd/system/
 cp install/sudoers.d/PrivateOn %{buildroot}/etc/sudoers.d/
 
 %post
-grep /usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE /etc/ld.so.conf || (echo "/usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE" >> /etc/ld.so.conf && ldconfig)
+grep /usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE /etc/ld.so.conf >/dev/null 2>&1 || (echo "/usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE" >> /etc/ld.so.conf && ldconfig)
 
 %files
 /etc/sudoers.d/PrivateOn
