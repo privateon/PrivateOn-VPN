@@ -29,7 +29,7 @@ use QtCore4::slots
 	updateStatus => [];
 use Net::DBus qw(:typing);
 use Data::Dumper;
-use vpn_status qw(get_status_api get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
+use vpn_status qw(get_api_status get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
 use vpn_install qw(add_connections);
 use sigtrap;
 use Socket;
@@ -367,7 +367,7 @@ sub NEW
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(300,150)));
 
 	my $status = Qt::TextEdit();
-	my $api_status = get_status_api();
+	my $api_status = get_api_status();
 	$status->setReadOnly(1);
 
 	$status->setMaximumHeight(60);
@@ -621,7 +621,7 @@ sub turnOffVpn
 	remove_dispatcher();
 	disable_monitor();
 
-	if (get_status_api() == NET_CRIPPLED) {
+	if (get_api_status() == NET_CRIPPLED) {
 		undo_crippling();
 		$net_status = "The VPN connection is deactivated.\n";
 		$status->setText($net_status);
@@ -708,7 +708,7 @@ sub updateDefaultVpn
 
 	my $status = this->{statusOutput};
 
-	my $api_status = get_status_api();
+	my $api_status = get_api_status();
 	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
 		$net_status = "The VPN connection is deactivating,\n";
 		$net_status .= "Please hold on...\n";
@@ -1117,6 +1117,7 @@ sub set_default_vpn
 {
 	my ($configfile, $ccode, $comment, $type, $vpntype) = @_;
 	my $uuid = "";
+	my $url = "none";
 	my $remote = "";
 	my $return_code = 0;
 	my $pty = this->{pty};
@@ -1166,6 +1167,17 @@ sub set_default_vpn
 		return $return_code;
 	}
 
+	# read API check URL from ini file
+	open my $vpn_ini, "<", INI_FILE;
+	while (my $line = <$vpn_ini>) {
+		if ($line =~/^url\s*=\s*(.*)\s*/) {
+			$url = $1;
+			last;
+		}
+	}
+	close $vpn_ini;
+
+	# write ini file
 	my $vpn_ini;
 	unless (open $vpn_ini, ">", INI_FILE) {
 		my $status = this->{statusOutput};
@@ -1181,6 +1193,7 @@ sub set_default_vpn
 	print $vpn_ini "id=$id\n";
 	print $vpn_ini "uuid=$uuid\n";
 	print $vpn_ini "remote=$remote\n";
+	print $vpn_ini "url=$url\n";
 	print $vpn_ini "monitor=enabled\n";
 	close $vpn_ini;
 

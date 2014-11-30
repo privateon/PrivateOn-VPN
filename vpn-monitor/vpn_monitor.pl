@@ -48,7 +48,6 @@ use constant {
 	LOCK_FILE     => "/var/run/PrivateOn/.lock",
 	PID_FILE      => "/var/run/PrivateOn/vpn-monitor.pid",
 	LOG_FILE      => "/var/log/PrivateOn.log",
-	CHECK_URL     => "http://api.nordvpn.com/vpn/check",
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
 	INI_FILE      => "/opt/PrivateOn-VPN/vpn-default.ini",
 	VERSION       => "0.9",
@@ -64,13 +63,16 @@ use constant {
 	NET_UNKNOWN	=> 100
 };
 
-my $ctx; # global AE loggin context object
+use constant {
+	IPC_HOST	=> '127.0.0.1',
+	IPC_PORT	=> 44244
+};
+
+my $ctx; # global AE logging context object
 my $monitor_enabled; # monitor state (set in run_once())
 my $disable_crippling = 0; # used to temporarily disable crippling
-
-my $host = '127.0.0.1';
-my $port = 44244;
-my $previous_status = 999;
+my $previous_status = 999; # used to store status result of previous iteration
+my $check_api_url; # URL for checking VPN-provider's VPN status API (set in run_once())
 
 my $cv = AE::cv;
 
@@ -88,7 +90,7 @@ sub http_req
 }
 
 
-sub get_nordvpn_status
+sub get_api_status
 {
 	# return NET_CRIPPLED if default route is 127.0.0.1
 	my @CMD = `netstat -rn`;
@@ -101,15 +103,17 @@ sub get_nordvpn_status
 	}
 
 	my $reply;
-	try {
-		my $json;
-		if ( $json = http_req(CHECK_URL) ) {
-			return NET_CRIPPLED if $json =~ /<meta name="flag" content="1"\/>/g;
-			$reply = decode_json($json);
-		}
-	} catch {
-		undef $reply;
-	};
+	if ( $check_api_url ne 'none') {
+		try {
+			my $json;
+			if ( $json = http_req($check_api_url) ) {
+				return NET_CRIPPLED if $json =~ /<meta name="flag" content="1"\/>/g;
+				$reply = decode_json($json);
+			}
+		} catch {
+			undef $reply;
+		};
+	}
 
 	unless (defined $reply or defined $reply->{'status'}) {
 		return quick_net_status();
@@ -245,6 +249,56 @@ sub get_previous_status_from_file
 }
 
 
+sub read_api_url_from_inifile
+{
+	my $vpn_ini;
+	unless (open $vpn_ini, "<" . INI_FILE) {
+		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+		$ctx->log(debug => "   Disabling API check.");
+		$check_api_url = 'none';
+		return 2;
+	}
+
+	my $url = 'none';
+	# read the first 'url' entry in the inifile
+	while (<$vpn_ini>) {
+		if (/^\s*url\s*=\s*(.*)\s*$/) {
+		$url = $1;
+		$ctx->log(debug => "Found URL $url") if DEBUG > 0;
+		last;
+		}
+	}
+	close $vpn_ini;
+	
+	if ( ! defined($url) ) {
+		$ctx->log(error => "Unexpected error while reading " . INI_FILE . ".  Reason: " . $!);
+		$ctx->log(debug => "   Disabling API check.");
+		$check_api_url = 'none';
+		return 2;
+	} elsif ($url eq 'none') {
+		$ctx->log(debug => "No URL entry found in " . INI_FILE) if DEBUG > 0;
+		$ctx->log(debug => "   Disabling API check.") if DEBUG > 0;
+		$check_api_url = 'none';
+		return 1;
+	} elsif ($url eq '') {
+		$ctx->log(debug => "URL entry empty in " . INI_FILE) if DEBUG > 0;
+		$ctx->log(debug => "   Disabling API check.") if DEBUG > 0;
+		$check_api_url = 'none';
+		return 1;
+	} elsif ($url =~ /http\:.*/) {
+		$ctx->log(debug => "Using API check URL  $url") if DEBUG > 0;
+		$check_api_url = $url;
+		return 0;
+	} else {
+		$ctx->log(error => "Error addind API check URL $url");
+		$ctx->log(error => "   URL must start with \"http:\"   Disabling API check.");
+		$check_api_url = 'none';
+		return 2;
+	}
+	return 2;
+}
+
+
 sub popup_dialog
 {
 	my $current_status = shift;
@@ -253,17 +307,17 @@ sub popup_dialog
 	my $d = new UI::Dialog::Backend::KDialog ( backtitle => 'PrivateOn', title => 'VPN-monitor' );
 
 	if ($current_status == NET_UNPROTECTED and $previous_status == NET_PROTECTED) {
-		$d->msgbox( title => 'NordVPN', text => 'NordVPN connection is down!' );
-		$ctx->log(debug => "Popup: NordVPN connection is down!" ) if DEBUG > 0;
+		$d->msgbox( title => 'PrivateOn-VPN', text => 'VPN connection is down!' );
+		$ctx->log(debug => "Popup: VPN connection is down!" ) if DEBUG > 0;
 	} elsif ($current_status == NET_PROTECTED and $previous_status ==  NET_UNPROTECTED) {
-		$d->msgbox( title => 'NordVPN', text => 'NordVPN connection is up!' );
-		$ctx->log(debug => "Popup: NordVPN connection is up!" ) if DEBUG > 0;
+		$d->msgbox( title => 'PrivateOn-VPN', text => 'VPN connection is up!' );
+		$ctx->log(debug => "Popup: VPN connection is up!" ) if DEBUG > 0;
 	} elsif ($current_status == NET_BROKEN) {
-		$d->msgbox( title => 'NordVPN', text => 'The network connection is broken!' );
-		$ctx->log(debug => "Popup: NordVPN connection is broken!" ) if DEBUG > 0;
+		$d->msgbox( title => 'PrivateOn-VPN', text => 'The network connection is broken!' );
+		$ctx->log(debug => "Popup: VPN connection is broken!" ) if DEBUG > 0;
 	} elsif ($current_status == NET_CRIPPLED) {
-		$d->msgbox( title => 'NordVPN', text => 'The VPN could not be started.\nNetwork is now in safemode!' );
-		$ctx->log(debug => "Popup: NordVPN connection is safemode!" ) if DEBUG > 0;
+		$d->msgbox( title => 'PrivateOn-VPN', text => 'The VPN could not be started.\nNetwork is now in safemode!' );
+		$ctx->log(debug => "Popup: VPN connection is safemode!" ) if DEBUG > 0;
 	}
 }
 
@@ -377,12 +431,12 @@ sub redirect_page()
 	foreach (@CMD) {
 		# skip header (first two lines)
 		if ($count < 2) {
-		$count++;
-		next;
+			$count++;
+			next;
 		}
 		@ARR = split /\s+/;
 		if ($ARR[0] eq $MY_IP && $ARR[7] eq $DEF_ROUTE_NIC) {
-		$flag = 0;
+			$flag = 0;
 		last;
 		}
 	}
@@ -459,7 +513,7 @@ sub spawn_undo_crippling()
 
 sub undo_crippling_callback()
 {
-	my $current_status = get_nordvpn_status();
+	my $current_status = get_api_status();
 	update_status_file($current_status);
 	popup_dialog($current_status);
 	return 0;
@@ -470,7 +524,7 @@ sub undo_crippling_on_error()
 {
 	my $msg = shift;
 	$ctx->log( error => "undo_crippling child process died unexpectedly: " . $msg );
-	my $current_status = get_nordvpn_status();
+	my $current_status = get_api_status();
 	if ($current_status == NET_PROTECTED || $current_status == NET_UNPROTECTED) {
 		return 0;
 	} else {
@@ -513,7 +567,7 @@ sub spawn_retry_vpn()
 
 sub retry_vpn_callback()
 {
-	if (get_nordvpn_status() == NET_UNPROTECTED) {
+	if (get_api_status() == NET_UNPROTECTED) {
 		redirect_page();
 		update_status_file(NET_CRIPPLED);
 		popup_dialog(NET_CRIPPLED);
@@ -526,7 +580,7 @@ sub retry_vpn_on_error()
 {
 	my $msg = shift;
 	$ctx->log( error => "Retry_vpn child process died unexpectedly: " . $msg );
-	my $current_status = get_nordvpn_status();
+	my $current_status = get_api_status();
 	if ($current_status == NET_PROTECTED) {
 		return 0;
 	} elsif ($current_status == NET_UNPROTECTED) {
@@ -550,7 +604,7 @@ sub refresh {
 
 	$ctx->log(debug => "Refreshing network status") if DEBUG > 0;
 
-	my $current_status = get_nordvpn_status();
+	my $current_status = get_api_status();
 	log_net_status($current_status) if DEBUG > 0;
 	$ctx->log(debug => "\tprevious_status = " . get_status_text($previous_status) . " current_status = " . get_status_text($current_status) ) if DEBUG > 1;
 
@@ -614,43 +668,40 @@ sub run_once {
 		close $dfh;
 
 		my $vpn_ini;
-		unless (open $vpn_ini, "<" . PATH . "vpn-default.ini") {
-			$ctx->log(error => "Could not open " . PATH . "vpn-default.ini  Reason: " . $!);
+		unless (open $vpn_ini, "<" . INI_FILE) {
+			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
 			if (defined $ARGV[0]) { spawn_undo_crippling() };
 			return -1;
 		}
 		my @vpn_ini_lines = <$vpn_ini>;
 		close $vpn_ini;
 
-		unless (open VPN_INI, ">" . PATH . "vpn-default.ini") {
-		    $ctx->log(error => "Unable to open vpn-default.ini. Reason: " . $!);
-		    if (defined $ARGV[0]) { spawn_undo_crippling() };
-		    return -1;
+		unless (open VPN_INI, ">" . INI_FILE) {
+			$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
+			if (defined $ARGV[0]) { spawn_undo_crippling() };
+			return -1;
 		}
-		if (scalar(@vpn_ini_lines) != 4) {
-			foreach my $line (@vpn_ini_lines) {
-				if ($line =~ /monitor/) {
-					print VPN_INI "monitor=enabled\n";
-					last;
-				}
+		my $has_been_written = 0;
+		foreach my $line (@vpn_ini_lines) {
+			if ($line =~ /monitor/) {
+				print VPN_INI "monitor=enabled\n";
+				$has_been_written = 1;
+			} else {
 				print VPN_INI $line;
 			}
-		} else {
-			foreach my $line (@vpn_ini_lines) {
-				print VPN_INI $line;
-			}
-			print VPN_INI "\nmonitor=enabled\n";
+		}
+		if ($has_been_written == 0) {
+			print VPN_INI "monitor=enabled\n";
 		}
 		close VPN_INI;
-		}
-	else { # status file exists
 
+	} else { # status file exists
 		# assign variable from file
 		$previous_status = get_previous_status_from_file();
 
 		my $vpn_ini;
-		unless (open $vpn_ini, "<" . PATH . "vpn-default.ini") {
-			$ctx->log(error => "Could not open " . PATH . "vpn-default.ini  Reason: " . $!);
+		unless (open $vpn_ini, "<" . INI_FILE) {
+			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
 			if (defined $ARGV[0]) { spawn_undo_crippling() };
 			return -1;
 		}
@@ -666,6 +717,10 @@ sub run_once {
 		}
 		close $vpn_ini;
 	}
+	
+	# read API check URL from inifile to global variable
+	read_api_url_from_inifile();
+	
 	if (defined $ARGV[0]) { spawn_undo_crippling() };
 }
 
@@ -688,7 +743,7 @@ my $handle;
 my $timer2;
 
 tcp_server(
-	$host, $port, sub {
+	IPC_HOST, IPC_PORT, sub {
 	my ($fh) = @_;
 	
 	$handle = AnyEvent::Handle->new(
@@ -724,8 +779,8 @@ tcp_server(
 				$self->push_write("monitoring disabled for 1 minute\n");
 				$ctx->log(debug => "Take-a-break requested, Temporary disable_crippling") if DEBUG > 0;
 			}
-			elsif ($buf eq "get-nordvpn-status") {
-				$self->push_write(get_nordvpn_status() . "\n");
+			elsif ($buf eq "get-api-status") {
+				$self->push_write(get_api_status() . "\n");
 			}
 			elsif ($buf eq "get-net-status") {
 				$self->push_write(quick_net_status() . "\n");
@@ -733,10 +788,10 @@ tcp_server(
 			elsif ($buf eq "write-dispatcher") {
 				my $uuid;
 				my $vpn_ini;
-				unless (open $vpn_ini, "<" . PATH . "vpn-default.ini") {
-				    $self->push_write("not ok - see error log\n");
-				    $ctx->log(error => "Unable to open vpn-default.ini for writing. Reason: " . $!);
-				    return;
+				unless (open $vpn_ini, "<" . INI_FILE) {
+					$self->push_write("not ok - see error log\n");
+					$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+					return;
 				}
 				while (<$vpn_ini>) {
 				if (/uuid=(.+)/) {
@@ -747,9 +802,9 @@ tcp_server(
 				close $vpn_ini;
 				my $dfh;
 				unless (open $dfh, ">", DISPATCH_FILE) {
-				    $self->push_write("not ok - see error log\n");
-				    $ctx->log(error => "Unable to open dispatch file for writing. Reason: " . $!);
-				    return;
+					$self->push_write("not ok - see error log\n");
+					$ctx->log(error => "Could not open " . DISPATCH_FILE . " for writing.  Reason: " . $!);
+					return;
 				}
 				print $dfh "#!/bin/sh\n";
 				print $dfh "ESSID=\"$uuid\"\n\n";
@@ -780,34 +835,34 @@ tcp_server(
 				system("/bin/pkill -9 vpn_retry");
 
 				my $vpn_ini;
-				unless (open $vpn_ini, "<" . PATH . "vpn-default.ini") {
-				    $self->push_write("not ok - see error log\n");
-				    $ctx->log(error => "Unable to open vpn-default.ini for writing. Reason: " . $!);
-				    return;
+				unless (open $vpn_ini, "<" . INI_FILE) {
+					$self->push_write("not ok - see error log\n");
+					$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+					return;
 				}
 				my @vpn_ini_lines = <$vpn_ini>;
 				close $vpn_ini;
-				unless (open VPN_INI, ">" . PATH . "vpn-default.ini") {
-				    $self->push_write("not ok - see error log\n");
-				    $ctx->log(error => "Unable to open vpn-default.ini for writing. Reason: " . $!);
-				    return;
+				unless (open VPN_INI, ">" . INI_FILE) {
+					$self->push_write("not ok - see error log\n");
+					$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
+					return;
 				}
+
 				# update ini
-				if (scalar(@vpn_ini_lines) != 4) {
+				my $has_been_written = 0;
 				foreach my $line (@vpn_ini_lines) {
 					if ($line =~ /monitor/) {
-					print VPN_INI "monitor=enabled\n";
-					last;
+						print VPN_INI "monitor=enabled\n";
+						$has_been_written = 1;
+					} else {
+						print VPN_INI $line;
 					}
-					print VPN_INI $line;
 				}
-				} else {
-				foreach my $line (@vpn_ini_lines) {
-					print VPN_INI $line;
-				}
-				print VPN_INI "\nmonitor=enabled\n";
+				if ($has_been_written == 0) {
+					print VPN_INI "monitor=enabled\n";
 				}
 				close VPN_INI;
+
 				# restart timer
 				undef $timer; # destroy current timer
 				$timer = AnyEvent->timer(
@@ -828,32 +883,31 @@ tcp_server(
 
 				update_status_file(999);
 				my $vpn_ini;
-				unless (open $vpn_ini, "<" . PATH . "vpn-default.ini") {
-				    $self->push_write("not ok - see error log\n");
-				    $ctx->log(error => "Unable to open vpn-default.ini for writing. Reason: " . $!);
-				    return 0;
+				unless (open $vpn_ini, "<" . INI_FILE) {
+					$self->push_write("not ok - see error log\n");
+					$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+					return 0;
 				}
 				my @vpn_ini_lines = <$vpn_ini>;
 				close $vpn_ini;
-				unless (open VPN_INI, ">" . PATH . "vpn-default.ini") {
-				    $self->push_write("not ok - see error log\n");
-				    $ctx->log(error => "Unable to open vpn-default.ini for writing. Reason: " . $!);
-				    return 0;
+				unless (open VPN_INI, ">" . INI_FILE) {
+					$self->push_write("not ok - see error log\n");
+					$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
+					return 0;
 				}
+
 				# update ini
-				if (scalar(@vpn_ini_lines) != 4) {
-					foreach my $line (@vpn_ini_lines) {
-						if ($line =~ /monitor/) {
-							print VPN_INI "monitor=disabled\n";
-							last;
-						}
+				my $has_been_written = 0;
+				foreach my $line (@vpn_ini_lines) {
+					if ($line =~ /monitor/) {
+						print VPN_INI "monitor=disabled\n";
+						$has_been_written = 1;
+					} else {
 						print VPN_INI $line;
 					}
-				} else {
-					foreach my $line (@vpn_ini_lines) {
-						print VPN_INI $line;
-					}
-					print VPN_INI "\nmonitor=disabled\n";
+				}
+				if ($has_been_written == 0) {
+					print VPN_INI "monitor=disabled\n";
 				}
 				close VPN_INI;
 				$self->push_write("ok - monitor disabled\n");
@@ -880,7 +934,7 @@ tcp_server(
 	}
 );
 
-$ctx->log(info => "Daemon is listening on " . $host . ":" . $port);
+$ctx->log(info => "Daemon is listening on " . IPC_HOST . ":" . IPC_PORT);
 
 
 ################		Main Loop		################

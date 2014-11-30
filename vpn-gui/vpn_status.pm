@@ -37,7 +37,7 @@ use constant {
 };
 
 
-sub get_status_api
+sub get_api_status
 {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
@@ -46,7 +46,7 @@ sub get_status_api
 		Proto => 'tcp',
 	);
 	return NET_ERROR unless $sock;
-	$sock->send("get-nordvpn-status\n");
+	$sock->send("get-api-status\n");
 	shutdown($sock, 1);
 	my $response = "";
 	$sock->recv($response, 4);

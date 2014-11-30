@@ -15,7 +15,7 @@ use QtCore4;
 use QtGui4;
 use MainWindow;
 use File::Basename;
-use vpn_status qw(get_status_api get_net_status);
+use vpn_status qw(get_api_status get_net_status);
 use QtCore4::isa qw( Qt::Dialog );
 use QtCore4::slots
     setIcon => [],
@@ -82,7 +82,7 @@ sub setIcon
 	if (get_net_status() != 0) {
 		$index = 0; # network is down
 	} else {
-		if (get_status_api() == 1) {
+		if (get_api_status() == 1) {
 			$index = 1; # vpn is up
 		} else {
 			$index = 2; # vpn is down
