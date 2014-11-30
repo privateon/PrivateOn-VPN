@@ -37,7 +37,7 @@ use constant {
 };
 
 
-sub get_nordvpn_status
+sub get_status_api
 {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(

@@ -29,7 +29,7 @@ use QtCore4::slots
 	updateStatus => [];
 use Net::DBus qw(:typing);
 use Data::Dumper;
-use vpn_status qw(get_nordvpn_status get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
+use vpn_status qw(get_status_api get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
 use vpn_install qw(add_connections);
 use sigtrap;
 use Socket;
@@ -46,7 +46,7 @@ my $previous_status = 100;
 my $serverCountryCombo;
 my $cancelButton;
 my $okButton;
-my $default_ccode;
+
 
 use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
@@ -367,7 +367,7 @@ sub NEW
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(300,150)));
 
 	my $status = Qt::TextEdit();
-	my $nordvpn_status = get_nordvpn_status();
+	my $api_status = get_status_api();
 	$status->setReadOnly(1);
 
 	$status->setMaximumHeight(60);
@@ -380,19 +380,18 @@ sub NEW
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
 	$serverCountryCombo = Qt::ComboBox();
 
-	my $default_type;
 	# set default values to be used if values not found in ini file 
-	$default_ccode = "de";
-	$default_type = "tcp";
+	my $default_ccode = "de";
+	my $default_type = "tcp";
 	if (-e INI_FILE) {
 		open my $vpn_ini, "<", INI_FILE;
 		while (my $line = <$vpn_ini>) {
 			if ($line =~/^id=(\S+)/) {
 				my $id = $1;
-				if ($id =~ /vpn-([a-z][a-z][a-z0-9]?)\.nordvpn-(tcp|udp)/i) {
+				if ($id =~ /vpn-([a-z][a-z][a-z0-9]?)\-(.*)-(tcp|udp)/i) {
 					$default_ccode = $1;
 					this->{country} = $default_ccode;
-					$default_type = $2;
+					$default_type = $3;
 					this->{serverType} = $default_type;
 					print "Read default_ccode = $default_ccode\tdefault_type = $default_type\n" if DEBUG > 1;
 				}
@@ -403,17 +402,17 @@ sub NEW
 		$net_status = "No previous configuration file.\n";
 	}
 
-	if ($nordvpn_status == NET_UNPROTECTED || $nordvpn_status == NET_PROTECTED) {
+	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		$net_status .= "The network is online!\n";
-	} elsif ($nordvpn_status == NET_CRIPPLED) {
+	} elsif ($api_status == NET_CRIPPLED) {
 		$net_status .= "The network is in safemode!\n";
 	} else {
 		$net_status .= "The network is offline!\n";
 	}
-	if ($nordvpn_status == NET_PROTECTED) {
-		$net_status .= "The Nord VPN is up!\n";
+	if ($api_status == NET_PROTECTED) {
+		$net_status .= "The VPN is up!\n";
 	} else {
-		$net_status .= "The Nord VPN is down!\n";
+		$net_status .= "The VPN is down!\n";
 	}
 	$status->setText($net_status);
 	my $cursor = $status->textCursor;
@@ -439,7 +438,7 @@ sub NEW
 
 	my $turnoffButton = Qt::PushButton(this->tr('Turn off'));
 	this->{turnoffButton} = $turnoffButton;
-	if ($nordvpn_status != NET_PROTECTED and $nordvpn_status != NET_CRIPPLED) {
+	if ($api_status != NET_PROTECTED and $api_status != NET_CRIPPLED) {
 		$turnoffButton->setEnabled(0);
 	}
 	$okButton = Qt::PushButton(this->tr('Refresh'));
@@ -494,7 +493,7 @@ sub NEW
 	this->setMinimumSize(Qt::Size(400, 240));
 	this->setMaximumSize(Qt::Size(400, 240));
 
-	setWindowTitle(this->tr('NordVPN Client'));
+	setWindowTitle(this->tr('VPN Client'));
 	this->setCentralWidget($centralWidget);
 
 	my $pty;
@@ -512,96 +511,99 @@ sub NEW
 }
 
 sub is_vpn_active {
-    return </sys/devices/virtual/net/tun*> ? 1 : 0;
+	return </sys/devices/virtual/net/tun*> ? 1 : 0;
 }
 
 sub get_countries_for_combobox {
-    my $serverCountryCombo = shift;
-    
-    my $default_ccode = "de";
-    my $default_type = "tcp";
-    my ($vpnlist, $duallist, $torlist) = getCountryList();
-    my @country = ();
-    my $i = 0;
-    my $c;
-    my $retval;
-    my $a_start;
-    my $a_end;
-    my $a_text;
-    my $b_start;
-    my $b_end;
-    my $b_text;
+	my $serverCountryCombo = shift;
+	
+	my $default_ccode = "de";
+	my $default_type = "tcp";
+	my ($vpnlist, $duallist, $torlist) = getCountryList();
+	my @country = ();
+	my $i = 0;
+	my $c;
+	my $retval;
+	my $a_start;
+	my $a_end;
+	my $a_text;
+	my $b_start;
+	my $b_end;
+	my $b_text;
 
-    # Vanilla VPN connections
-    if (ENABLE_VPN) {
-    foreach $c (sort {  $a_text = $a;
-			$a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
-			$b_text = $b;
-			$b_text = $b_text eq 'usa' ? 'usa' : substr($b_text,0,2);
-			$retval = $a_text eq $b_text ? $a cmp $b : $country_code{$a_text} cmp $country_code{$b_text};
-			$retval;
-		} keys %$vpnlist) {
-	if ($c =~ /([a-z][a-z])([0-9])/) {
-	    $serverCountryCombo->addItem($country_code{$1}."-".$2);
-	} else {
-	    $serverCountryCombo->addItem($country_code{$c});
+	# Vanilla VPN connections
+	if (ENABLE_VPN) {
+		foreach $c (sort {  $a_text = $a;
+			   $a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
+			   $b_text = $b;
+			   $b_text = $b_text eq 'usa' ? 'usa' : substr($b_text,0,2);
+			   $retval = $a_text eq $b_text ? $a cmp $b : $country_code{$a_text} cmp $country_code{$b_text};
+			   $retval;
+			} keys %$vpnlist) {
+		if ($c =~ /([a-z][a-z])([0-9])/) {
+			$serverCountryCombo->addItem(substr($country_code{$1},0,15) . " " . $2);
+		} else {
+			$serverCountryCombo->addItem(substr($country_code{$c},0,15));
+		}
+		if ($default_ccode eq $c) {
+			$serverCountryCombo->setCurrentIndex($i);
+			this->{id_country} = $i;
+		} else {
+			$i ++;
+		}
+		push @country, $c;
+	}}
+
+	# Dual VPN connections
+	if (ENABLE_DUAL_VPN) {
+		foreach $c (sort {  $a_text = $a;
+			   $a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
+			   $b_text = $b;
+			   $b_text = $b_text eq 'usa' ? 'usa' : substr($b_text,0,2);
+			   $retval = $a_text eq $b_text ? $a cmp $b : $country_code{$a_text} cmp $country_code{$b_text};
+			   $retval;
+			} keys %$duallist) {
+		if ($c =~ /([a-z][a-z])\+([a-z][a-z])([0-9]?)/) {
+			$a_text = substr($country_code{$1},0,7) . " - " . substr($country_code{$2},0,7) . " " . $3;
+		} elsif ($c =~ /([a-z][a-z])\+([a-z][a-z])/) {
+			$a_text = substr($country_code{$1},0,7) . " - " . substr($country_code{$2},0,7);
+		} else {
+			$a_text = $c;
+		}
+		$serverCountryCombo->addItem($a_text);
+
+		if ($default_ccode eq $c) {
+			# Who knows, someone might set tunneled VPN as the default, so might wanna implement the functionality here
+		} else {
+			$i++
+		}
+		# These can be distinguished by the '+' in the $c
+		push @country, $c;
+	}}
+
+	if (ENABLE_TOR_VPN) {
+		foreach $c (sort {  $a_text = $a;
+			   $a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
+			   $b_text = $b;
+			   $b_text = $b_text eq 'usa' ? 'usa' : substr($b_text,0,2);
+			   $retval = $a_text eq $b_text ? $a cmp $b : $country_code{$a_text} cmp $country_code{$b_text};
+			   $retval;
+			} keys %$torlist) {
+		$a_text = "Tor : " . substr($country_code{$c},0,10);
+		$serverCountryCombo->addItem($a_text);
+
+		if ($default_ccode eq $c) {
+			# Right now there's no way for $c to contain info on tor enablement, so just don't do anything
+		} else {
+			$i++
+		}
+		push @country, ("tor_" . $c);
+	}}
+	if (DEBUG > 0) {
+		print STDERR "get_countries_for_combobox returning " . scalar(@country) . " entries\n";
+		print STDERR "Countries: " . join(", ", @country) . "\n";
 	}
-	if ($default_ccode eq $c) {
-	    $serverCountryCombo->setCurrentIndex($i);
-	    this->{id_country} = $i;
-	} else {
-	    $i ++;
-	}
-	push @country, $c;
-    }}
-
-    # Dual VPN connections
-    if (ENABLE_DUAL_VPN) {
-    foreach $c (sort { # No support for 3 letter countries or digits at the end for now
-		       # Also don't bother with equals since no digits
-		       ($a_start, $a_end) = split('-', $a);
-		       ($b_start, $b_end) = split('-', $b);
-		       $a_text = $country_code{$a_start} . " - " . $country_code{$a_end};
-		       $b_text = $country_code{$b_start} . " - " . $country_code{$b_end};
-		       $a_text cmp $b_text;
-		} keys %$duallist) {
-
-	($a_start, $a_end) = split('-', $c);
-	$a_text = $country_code{$a_start} . " - " . $country_code{$a_end};
-
-	$serverCountryCombo->addItem($a_text);
-	if ($default_ccode eq $c) {
-	    # Who knows, someone might set tunneled VPN as the default, so might wanna implement the functionality here
-	} else {
-	    $i++
-	}
-	# These can be distinguished by the '-' in the $c
-	push @country, $c;
-    }}
-
-    if (ENABLE_TOR_VPN) {
-    foreach $c (sort {  $a_text = $a;
-			$a_text = $a_text eq 'usa' ? 'usa' : substr($a_text,0,2);
-			$b_text = $b;
-			$b_text = $b_text eq 'usa' ? 'usa' : substr($b_text,0,2);
-			$retval = $a_text eq $b_text ? $a cmp $b : $country_code{$a_text} cmp $country_code{$b_text};
-			$retval;
-		} keys %$torlist) {
-	$a_text = "Tor : " . $country_code{$c};
-	$serverCountryCombo->addItem($a_text);
-
-	if ($default_ccode eq $c) {
-	    # Right now there's no way for $c to contain info on tor enablement, so just don't do anything
-	} else {
-	    $i++
-	}
-	push @country, ("tor_" . $c);
-    }}
-    if (DEBUG > 0) {
-	print STDERR "get_countries_for_combobox returning " . scalar(@country) . " entries\n";
-	print STDERR "Countries: " . join(", ", @country) . "\n";
-    }
-    return \@country;
+	return \@country;
 }
 
 sub turnOffVpn
@@ -619,7 +621,7 @@ sub turnOffVpn
 	remove_dispatcher();
 	disable_monitor();
 
-	if (get_nordvpn_status() == NET_CRIPPLED) {
+	if (get_status_api() == NET_CRIPPLED) {
 		undo_crippling();
 		$net_status = "The VPN connection is deactivated.\n";
 		$status->setText($net_status);
@@ -639,10 +641,10 @@ sub turnOffVpn
 	}
 	if ( system($test_string) == 0 ) {
 		# openSUSE 13.2 uses argument "conn show --active"
-		@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep nordvpn`;
+		@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
 	} else {
 		# openSUSE 13.1 uses argument "conn status" 
-		@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep nordvpn`;
+		@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
 	}
 	my @active_conns = ();
 	foreach my $conn (@active_lines) {
@@ -650,6 +652,17 @@ sub turnOffVpn
 			push @active_conns, $1;
 		}
 	}
+	
+	# failover command if above gave no results
+	if (!@active_conns) {
+		@active_lines = `/usr/bin/nmcli conn`;
+		foreach my $conn (@active_lines) {
+			if ($conn =~ /(\S+)/) {
+				push @active_conns, $1;
+			}
+		}
+	}
+	
 	my $vpn_connection = get_vpn_connection(get_connections());
 	my $pty = this->{pty};
 	foreach my $conn (@$vpn_connection) {
@@ -695,8 +708,8 @@ sub updateDefaultVpn
 
 	my $status = this->{statusOutput};
 
-	my $nordvpn_status = get_nordvpn_status();
-	if ($nordvpn_status == NET_PROTECTED) { # i.e. vpn is up
+	my $api_status = get_status_api();
+	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
 		$net_status = "The VPN connection is deactivating,\n";
 		$net_status .= "Please hold on...\n";
 		$status->setText($net_status);
@@ -715,10 +728,10 @@ sub updateDefaultVpn
 		}
 		if ( system($test_string) == 0 ) {
 			# openSUSE 13.2 uses argument "conn show --active"
-			@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep nordvpn`;
+			@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
 		} else {
 			# openSUSE 13.1 uses argument "conn status" 
-			@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep nordvpn`;
+			@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
 		}
 		my @active_conns = ();
 		foreach my $conn (@active_lines) {
@@ -726,6 +739,17 @@ sub updateDefaultVpn
 				push @active_conns, $1;
 			}
 		}
+		
+		# failover command if above gave no results
+		if (!@active_conns) {
+			@active_lines = `/usr/bin/nmcli conn`;
+			foreach my $conn (@active_lines) {
+				if ($conn =~ /(\S+)/) {
+					push @active_conns, $1;
+				}
+			}
+		}
+	
 		my $vpn_connection = get_vpn_connection(get_connections());
 		my $pty = this->{pty};
 		foreach my $conn (@$vpn_connection) {
@@ -745,7 +769,7 @@ sub updateDefaultVpn
 				}
 			}
 		}
-	} elsif ($nordvpn_status == NET_CRIPPLED) {
+	} elsif ($api_status == NET_CRIPPLED) {
 		undo_crippling();
 	}
 
@@ -765,28 +789,45 @@ sub updateDefaultVpnResume
 	my $homedir = $ENV{HOME}.'/';
 	my $configfiledir = "/etc/openvpn/";
 	my $vpntype;
+	my $comment;
+	my $configfile;
 
 	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 0;
 	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 0;
 	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
 	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
-	my $configfile;
 
-	if (-r $configfiledir."vpn-$ccode.nordvpn-$stype.ovpn") {
-	    $configfile = $configfiledir."vpn-$ccode.nordvpn-$stype.ovpn";
-	    $vpntype    = 'vpn';
-	} elsif ($ccode =~ /\-/ && -r $configfiledir."double-$ccode.nordvpn-$stype.ovpn") {
-	    # Dual tunnel
-	    $configfile = $configfiledir."double-$ccode.nordvpn-$stype.ovpn";
-	    $vpntype    = 'double';
-	} elsif ($ccode =~ /tor\_(.*)/ && ($ccode = $1) && -r $configfiledir."tor-$ccode.nordvpn-$stype.ovpn") {
-	    $configfile = $configfiledir."tor-$ccode.nordvpn-$stype.ovpn";
-	    $vpntype    = 'tor';
+	# scan directory for matching files
+	my @tmplist = glob($configfiledir."*-$ccode-*-$stype.ovpn");
+	foreach my $file (@tmplist) {
+		# check file syntax, select first that matches
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
+			$vpntype = $1;
+			$ccode = $2;
+			$comment = $3;
+			$stype = $4;
+			$configfile = $file;
+			last;
+		}
 	}
 
-	return unless defined($configfile);
+	if ( defined($configfile) && $configfile ne '' ) {
+		print "config file: $configfile\n" if DEBUG > 0;
+	}else {
+		print "glob files: @tmplist\n" if DEBUG > 0;
+		print "ERROR: config file: \{TYPE\}-$ccode-\{COMMENT\}-$stype.ovpn not found!\n" if DEBUG > 0;
+		$net_status = "Error: Configuration file not found!\n";
+		$net_status .="Check that the selected server\n";
+		$net_status .="supports protocol " . uc($stype) . ".\n";
+		$status->setText($net_status);
+		my $cursor = $status->textCursor;
+		$cursor->movePosition(Qt::TextCursor::End());
+		$status->setTextCursor($cursor);
+		$status->repaint();
+		$internalTimer->start(10*60*1000);
+		return;
+	}
 
-	print "config file: $configfile\n" if DEBUG > 0;
 
 	my $pty = this->{pty};
 	my $pid = $pty->pid();
@@ -798,11 +839,11 @@ sub updateDefaultVpnResume
 		print "Killed the previous subprocess, pid: ",$pid."\n" if DEBUG > 0;
 	}
 	print "ccode = $ccode\tstype = $stype\n" if DEBUG > 0;
-	my $return_code = set_default_vpn($configfile, $ccode, $stype, $vpntype);
+	my $return_code = set_default_vpn($configfile, $ccode, $comment, $stype, $vpntype);
 	if ($return_code == 1) {
-		$net_status .= "There is no any VPN connection!\n";
-		$net_status .="Please set the username/password by clicking 'update',\n";
-		$net_status .="it will install all vpn connections automatically.\n";
+		$net_status = "There are no VPN connections!\n";
+		$net_status .="Please click 'S/U Pass'\n"; 
+		$net_status .="to set your username/password\n"; 
 		$status->setText($net_status);
 		my $cursor = $status->textCursor;
 		$cursor->movePosition(Qt::TextCursor::End());
@@ -832,22 +873,22 @@ sub updateDefaultVpnResume
 
 sub showNetStatus {
 	my $status = this->{statusOutput};
-	my $nordvpn_status = get_net_status();
-	if ($nordvpn_status == NET_UNPROTECTED || $nordvpn_status == NET_PROTECTED) {
+	my $api_status = get_net_status();
+	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		$net_status = "The network is online!\n";
-	} elsif ($nordvpn_status == NET_CRIPPLED) {
+	} elsif ($api_status == NET_CRIPPLED) {
 		$net_status .= "The network is in safemode!\n";
 	} else {
 		$net_status = "The network is offline!\n";
 	}
-	if ($nordvpn_status == NET_PROTECTED) {
-		$net_status .= "The Nord VPN is up!\n";
+	if ($api_status == NET_PROTECTED) {
+		$net_status .= "The VPN is up!\n";
 		this->{turnoffButton}->setEnabled(1);
-	} elsif ($nordvpn_status == NET_CRIPPLED) {
-		$net_status .= "The Nord VPN is down!\n";
+	} elsif ($api_status == NET_CRIPPLED) {
+		$net_status .= "The VPN is down!\n";
 		this->{turnoffButton}->setEnabled(1);
 	} else {
-		$net_status .= "The Nord VPN is down!\n";
+		$net_status .= "The VPN is down!\n";
 		this->{turnoffButton}->setEnabled(0);
 	}
 
@@ -857,7 +898,7 @@ sub showNetStatus {
 	$cursor->movePosition(Qt::TextCursor::End());
 	$status->setTextCursor($cursor);
 	$status->repaint();
-	return($nordvpn_status);
+	return($api_status);
 }
 
 sub setUserInfo {
@@ -899,29 +940,28 @@ sub setUserInfo {
 
 	my $ac_rc; # add_connections() return code
 	if ($ok) {
-	    $ac_rc = add_connections($username, $password);
-	    if ($ac_rc == 0) {
-		while (</etc/openvpn/*.ovpn>) {
-		    copy($_,$_ . '.bak');
-		    # TODO: what do we do after copying?
-		}
-	    }
-	    else {
+		$ac_rc = add_connections($username, $password);
+		if ($ac_rc == 0) {
+			while (</etc/openvpn/*.ovpn>) {
+				copy($_,$_ . '.bak');
+				# TODO: what do we do after copying?
+			}
+		} else {
 		my $original_file;
 		if ($ac_rc == 1) {
-		    while (</etc/openvpn/*.bak>) {
-			$original_file = substr($_, 0, -4); # remove trailing .bak
-			if (!(-e $original_file)) {
-			    # copy only if file doesn't already exist
-			    rename($_, $original_file);
+			while (</etc/openvpn/*.bak>) {
+				$original_file = substr($_, 0, -4); # remove trailing .bak
+				if (!(-e $original_file)) {
+					# copy only if file doesn't already exist
+					rename($_, $original_file);
+				}
 			}
-		    }
 		}
 		elsif ($ac_rc == 2) {
-		    while (</etc/openvpn/*.bak>) {
-			$original_file = substr($_, 0, -4); # remove trailing .bak
-			rename($_, $original_file);
-		    }
+			while (</etc/openvpn/*.bak>) {
+				$original_file = substr($_, 0, -4); # remove trailing .bak
+				rename($_, $original_file);
+			}
 		}
 		my $status = this->{statusOutput};
 		$net_status = "Note: Can not create all connections for you\n";
@@ -931,7 +971,7 @@ sub setUserInfo {
 		$status->setTextCursor($cursor);
 		$status->repaint();
 		return $userInfo{code};
-	    }
+		}
 	}
 
 	# reread country list
@@ -962,23 +1002,29 @@ sub getUserInfo {
 		$server = 0;
 	}
 
-	my $countrycode = $countrylist[$country];
-	my $servertype = $server == 0 ? "tcp" : "udp";
+	my $ccode = $countrylist[$country];
+	my $stype = $server == 0 ? "tcp" : "udp";
+	my $system_connection_file = "";	
 
-	my $kind = "";
-	if (-e "/etc/NetworkManager/system-connections/vpn-$countrycode.nordvpn-$servertype") {
-		$kind = "vpn";
-	} elsif (-e "/etc/NetworkManager/system-connections/tor-$countrycode.nordvpn-$servertype") {
-		$kind = "tor";
-	} elsif (-e "/etc/NetworkManager/system-connections/double-at-$countrycode.nordvpn-$servertype") {
-		$kind = "double-at";
+	# scan directory for matching files
+	my @tmplist = glob("/etc/NetworkManager/system-connections/*-$ccode-*-$stype");
+	foreach my $file (@tmplist) {
+		# check file syntax, select first that matches
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
+			$system_connection_file = $file;
+			last;
+		}
 	}
-	if ($kind eq "") {
+
+	# if no file found
+	if ($system_connection_file eq "") {
+		print "glob files: @tmplist\n" if DEBUG > 0;
+		print "ERROR: system-connection: \{TYPE\}-$ccode-\{COMMENT\}-$stype not found!\n" if DEBUG > 0;
 		$userInfo{code} = 1; # there is empty connection file
 		return \%userInfo;
 	}
 
-	open my $file, "/etc/NetworkManager/system-connections/$kind-$countrycode.nordvpn-$servertype" or $userInfo{code} = 2;
+	open my $file, $system_connection_file or $userInfo{code} = 2;
 	while (my $line = <$file>) {
 		if ($line =~ /^username=(\S+)/) {
 			$userInfo{username} = $1;
@@ -1022,20 +1068,20 @@ sub getCountryList
 	my $proto;
 
 	if (opendir $dir, $filedir) {
-	    my @tmplist = readdir $dir;
-	    closedir $dir;
-	    
-	    foreach my $file (@tmplist) {
-		next unless ($file =~ /(vpn|tor|double-(\w{2}))-([a-z][a-z][a-z0-9]?)\.nordvpn-(tcp|udp)\.ovpn/i);
-		($type, $start, $country, $proto) = ($1, $2, $3, $4);
-		if ($type eq 'vpn' ) {
-		    $vpnlist->{$country} = 1;
-		} elsif ($type eq 'tor') {
-		    $torlist->{$country} = 1;
-		} else { # $type eq 'double-'
-		    $duallist->{$start . "-" . $country} = 1;
+		my @tmplist = readdir $dir;
+		closedir $dir;
+		
+		foreach my $file (@tmplist) {
+			next unless ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i);
+			($type, $country, $proto) = ($1, $2, $4);
+			if ($type eq 'vpn' ) {
+				$vpnlist->{$country} = 1;
+			} elsif ($type eq 'tor') {
+				$torlist->{$country} = 1;
+			} else { # $type eq 'double-'
+				$duallist->{$country} = 1;
+			}
 		}
-	    }
 	}
 	print "Returning " . scalar(keys %$vpnlist) . " VPN configs, " . scalar(keys %$torlist) . " TOR configs, and " . scalar(keys %$duallist) . " tunneled VPN configs\n" if DEBUG > 1;
 	return wantarray ? ($vpnlist, $duallist, $torlist) : $vpnlist;
@@ -1044,9 +1090,9 @@ sub getCountryList
 sub get_connections
 {
 	my $object = Net::DBus->system
-		->get_service("org.freedesktop.NetworkManager")
-		->get_object("/org/freedesktop/NetworkManager/Settings",
-				 "org.freedesktop.NetworkManager.Settings");
+	    ->get_service("org.freedesktop.NetworkManager")
+	        ->get_object("/org/freedesktop/NetworkManager/Settings",
+	            "org.freedesktop.NetworkManager.Settings");
 
 	return $object->ListConnections();
 }
@@ -1058,9 +1104,9 @@ sub get_vpn_connection
 
 	foreach my $connection (@{$connections}) {
 		my $object = Net::DBus->system
-			->get_service("org.freedesktop.NetworkManager")
-			->get_object($connection,
-					 "org.freedesktop.NetworkManager.Settings.Connection");
+		    ->get_service("org.freedesktop.NetworkManager")
+		        ->get_object($connection,
+		            "org.freedesktop.NetworkManager.Settings.Connection");
 		my $settings = $object->GetSettings();
 		push(@return_conns, $settings) if ($settings->{connection}->{type} eq "vpn");
 	}
@@ -1069,7 +1115,7 @@ sub get_vpn_connection
 
 sub set_default_vpn
 {
-	my ($configfile, $ccode, $type, $vpntype) = @_;
+	my ($configfile, $ccode, $comment, $type, $vpntype) = @_;
 	my $uuid = "";
 	my $remote = "";
 	my $return_code = 0;
@@ -1079,48 +1125,45 @@ sub set_default_vpn
 	print STDERR "Setting default vpn: \$configfile = '$configfile', \$ccode = '$ccode', \$type = '$type', \$vpntype = '$vpntype'\n" if DEBUG > 0;
 
 	my $sysconnections = "/etc/NetworkManager/system-connections/";
-	my $id = $vpntype . "-" . $ccode . ".nordvpn-" . $type;
-	if (-r $sysconnections . $id &&
-	    -r '/etc/ca-certificates/' . $id . ".ca" &&
-	    -r '/etc/ca-certificates/' . $id . ".auth") {
-	    unless (open IN, $sysconnections.$id) {
-		my $status = this->{statusOutput};
-		my $net_status = "Could not open VPN config file for reading. Reason: " . $! . "\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		return(1);
-	    }
-	    while (<IN>) {
-		if (/^uuid=(\S+)/) {
-		    $uuid = $1;
-		} elsif (/^remote=(\S+)/) {
-		    $remote = $1;
-		} else {
-		    next;
+	my $id = $vpntype . "-" . $ccode . "-" . $comment . "-" . $type;
+	if (-r $sysconnections . $id && -r '/etc/ca-certificates/' . $id . ".ca" && -r '/etc/ca-certificates/' . $id . ".auth") {
+		unless (open IN, $sysconnections.$id) {
+			my $status = this->{statusOutput};
+			my $net_status = "Could not open VPN config file for reading. Reason: " . $! . "\n";
+			$status->setText($net_status);
+			my $cursor = $status->textCursor;
+			$cursor->movePosition(Qt::TextCursor::End());
+			$status->setTextCursor($cursor);
+			$status->repaint();
+			return(1);
 		}
-	    }
-	    close IN;
-	    try {
-		$pty->spawn("/usr/bin/nmcli conn up uuid $uuid && echo \"VPN activation successful\"");
-	    } catch {
-		warn "caught error: $_\n";
-		$return_code = 2;
-	    };
-
+		while (<IN>) {
+			if (/^uuid=(\S+)/) {
+				$uuid = $1;
+			} elsif (/^remote=(\S+)/) {
+				$remote = $1;
+				} else {
+					next;
+				}
+			}
+			close IN;
+			try {
+				$pty->spawn("/usr/bin/nmcli conn up uuid $uuid && echo \"VPN activation successful\"");
+			} catch {
+			warn "caught error: $_\n";
+			$return_code = 2;
+		};
 	} else {
-	    my $status = this->{statusOutput};
-	    $net_status .= "No system connection file found.\n";
-	    this->{statusOutput} = $status;
-	    return 1;
+		my $status = this->{statusOutput};
+		$net_status .= "No system connection file found.\n";
+		this->{statusOutput} = $status;
+		return 1;
 	}
 	if ($uuid eq "") {
-	    $return_code = 1;
+		$return_code = 1;
 	}
 	if ($return_code != 0) {
-	    return $return_code;
+		return $return_code;
 	}
 
 	my $vpn_ini;
@@ -1133,7 +1176,8 @@ sub set_default_vpn
 		$status->setTextCursor($cursor);
 		$status->repaint();
 		return(1);
-	}	print $vpn_ini "[default-vpn]\n";
+	}
+	print $vpn_ini "[default-vpn]\n";
 	print $vpn_ini "id=$id\n";
 	print $vpn_ini "uuid=$uuid\n";
 	print $vpn_ini "remote=$remote\n";
@@ -1183,8 +1227,8 @@ sub updateStatus
 		$last_pty_read = time();
 	} else {
 		if ( time() - $last_pty_read > 5*60 ) { # keep text for 5 min
-			my $nordvpn_status = showNetStatus();
-			if ($nordvpn_status == NET_PROTECTED) {
+			my $api_status = showNetStatus();
+			if ($api_status == NET_PROTECTED) {
 				$internalTimer->start(5*60*1000);
 			} else {
 				$internalTimer->start(60*1000);
@@ -1229,8 +1273,8 @@ sub updateStatus
 }
 
 sub reenableButton {
-    $okButton->setEnabled(1);
-    $buttonTimer->stop();
+	$okButton->setEnabled(1);
+	$buttonTimer->stop();
 }
 
 1;
