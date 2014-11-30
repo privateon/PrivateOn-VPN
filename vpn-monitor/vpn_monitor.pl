@@ -598,7 +598,7 @@ sub retry_vpn_on_error()
 ################     Detect Change in Network State	################
 
 sub refresh {
-	if ( $monitor_enabled == 0 or $disable_crippling == 1) {
+	if ( not defined($monitor_enabled) or $monitor_enabled == 0 or $disable_crippling == 1) {
 		return;
 	}
 
