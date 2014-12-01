@@ -21,7 +21,8 @@ sub import{
 }
 
 use constant {
-	CONFIG_URL   => "https://nordvpn.com/api/files/zip",
+#	CONFIG_URL   => "https://nordvpn.com/api/files/zip",
+        CONFIG_URL   => "http://www.tietosuojakone.fi/openvpn/serverlist-current.zip",
 	INI_FILE     => "/opt/PrivateOn-VPN/vpn-default.ini",
 	URL_FILE     => "Check-VPN-status-API.url",
 	TMP_PATH     => "/tmp/vpn_install/",
