@@ -64,7 +64,6 @@ Transport:	TCP
 
 Example 2.
 double-at+nl2-comment-udp.ovpn
-nordvpn-tcp.ovpn
 
 Type: 		Double VPN
 Countries: 	First Austria then Netherlands

@@ -345,9 +345,10 @@ sub NEW
 	my ($class) = @_;
 	$class->SUPER::NEW();
 	this->{id_country} = 0;
-	this->{country} = 'de';
+	this->{country} = '';
 	this->{id_serverType} = 0;
-	this->{serverType} = 'tcp';
+	this->{vpnType} = 'vpn';
+	this->{protocol} = 'tcp';
 
 	# timer implementation
 	$internalTimer = Qt::Timer(this);  # create internal timer
@@ -381,19 +382,18 @@ sub NEW
 	$serverCountryCombo = Qt::ComboBox();
 
 	# set default values to be used if values not found in ini file 
-	my $default_ccode = "de";
-	my $default_type = "tcp";
+	my $default_protocol = "tcp";
 	if (-e INI_FILE) {
 		open my $vpn_ini, "<", INI_FILE;
 		while (my $line = <$vpn_ini>) {
 			if ($line =~/^id=(\S+)/) {
 				my $id = $1;
-				if ($id =~ /vpn-([a-z][a-z][a-z0-9]?)\-(.*)-(tcp|udp)/i) {
-					$default_ccode = $1;
-					this->{country} = $default_ccode;
-					$default_type = $3;
-					this->{serverType} = $default_type;
-					print "Read default_ccode = $default_ccode\tdefault_type = $default_type\n" if DEBUG > 1;
+				if ($id =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
+					this->{vpnType} = $1;
+					this->{country} = $2;
+					this->{protocol} = $4;
+					$default_protocol = $4;
+					print "Read vpnType = $1\tccode = $2\tserverType = $4\n" if DEBUG > 1;
 				}
 				last;
 			}
@@ -428,7 +428,7 @@ sub NEW
 	$serverTypeCombo->addItem('TCP');
 	$serverTypeCombo->addItem('UDP');
 
-	if ($default_type eq "udp") {
+	if ($default_protocol eq "udp") {
 		$serverTypeCombo->setCurrentIndex(1);
 		this->{id_serverType} = 1;
 	} else {
@@ -442,8 +442,7 @@ sub NEW
 		$turnoffButton->setEnabled(0);
 	}
 	$okButton = Qt::PushButton(this->tr('Refresh'));
-	$cancelButton = Qt::PushButton(this->tr('S/U Pass'));
-#	$cancelButton = Qt::PushButton(this->tr('Update'));
+	$cancelButton = Qt::PushButton(this->tr('S/U Pass')); # Update server list and user/password
 	this->{pwButton} = $cancelButton;
 
 	$turnoffButton->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
@@ -516,9 +515,10 @@ sub is_vpn_active {
 
 sub get_countries_for_combobox {
 	my $serverCountryCombo = shift;
-	
-	my $default_ccode = "de";
-	my $default_type = "tcp";
+
+	my $default_vpntype = this->{vpnType};
+	my $default_ccode = this->{country};
+
 	my ($vpnlist, $duallist, $torlist) = getCountryList();
 	my @country = ();
 	my $i = 0;
@@ -546,8 +546,12 @@ sub get_countries_for_combobox {
 			$serverCountryCombo->addItem(substr($country_code{$c},0,15));
 		}
 		if ($default_ccode eq $c) {
-			$serverCountryCombo->setCurrentIndex($i);
-			this->{id_country} = $i;
+			if ($default_vpntype eq 'vpn') {
+				$serverCountryCombo->setCurrentIndex($i);
+				this->{id_country} = $i;
+			} else {
+				$i ++;
+			}
 		} else {
 			$i ++;
 		}
@@ -573,7 +577,12 @@ sub get_countries_for_combobox {
 		$serverCountryCombo->addItem($a_text);
 
 		if ($default_ccode eq $c) {
-			# Who knows, someone might set tunneled VPN as the default, so might wanna implement the functionality here
+			if ($default_vpntype eq 'double') {
+				$serverCountryCombo->setCurrentIndex($i);
+				this->{id_country} = $i;
+			} else {
+				$i ++;
+			}
 		} else {
 			$i++
 		}
@@ -593,7 +602,12 @@ sub get_countries_for_combobox {
 		$serverCountryCombo->addItem($a_text);
 
 		if ($default_ccode eq $c) {
-			# Right now there's no way for $c to contain info on tor enablement, so just don't do anything
+			if ($default_vpntype eq 'tor') {
+				$serverCountryCombo->setCurrentIndex($i);
+				this->{id_country} = $i;
+			} else {
+				$i ++;
+			}
 		} else {
 			$i++
 		}
@@ -1168,7 +1182,8 @@ sub set_default_vpn
 	}
 
 	# read API check URL from ini file
-	open my $vpn_ini, "<", INI_FILE;
+	my $vpn_ini;
+	open $vpn_ini, "<", INI_FILE;
 	while (my $line = <$vpn_ini>) {
 		if ($line =~/^url\s*=\s*(.*)\s*/) {
 			$url = $1;
@@ -1178,7 +1193,6 @@ sub set_default_vpn
 	close $vpn_ini;
 
 	# write ini file
-	my $vpn_ini;
 	unless (open $vpn_ini, ">", INI_FILE) {
 		my $status = this->{statusOutput};
 		my $net_status = "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";

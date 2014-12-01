@@ -21,7 +21,6 @@ sub import{
 }
 
 use constant {
-#	CONFIG_URL   => "https://nordvpn.com/api/files/zip",
         CONFIG_URL   => "http://www.tietosuojakone.fi/openvpn/serverlist-current.zip",
 	INI_FILE     => "/opt/PrivateOn-VPN/vpn-default.ini",
 	URL_FILE     => "Check-VPN-status-API.url",
@@ -40,8 +39,8 @@ sub get_latest_server_list
 
 	system("/usr/bin/rm -fr " . TMP_PATH);
 	system("/usr/bin/mkdir -p " . TMP_PATH);
-	system("/usr/bin/wget --output-document=" . TMP_PATH . "config.zip " . CONFIG_URL);
-	system("/usr/bin/unzip " . TMP_PATH . "config.zip -d " . TMP_PATH);
+	system("/usr/bin/wget --output-document=" . TMP_PATH . "serverlist.zip " . CONFIG_URL);
+	system("/usr/bin/unzip " . TMP_PATH . "serverlist.zip -d " . TMP_PATH);
 	system("sync");
 
 	write_url_to_ini_file();
@@ -175,9 +174,6 @@ sub add_one_connection
 
 sub write_url_to_ini_file
 {
-	## next line is only for testing purposes
-	system("echo -n \"http://api.nordvpn.com/vpn/check\" > /tmp/vpn_install/Check-VPN-status-API.url");
-
 	my $url = "";
 	if (-e TMP_PATH . URL_FILE) {
 		print STDERR "Url file " . TMP_PATH . URL_FILE . " found\n" if DEBUG > 0;
