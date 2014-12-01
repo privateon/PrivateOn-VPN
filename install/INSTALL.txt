@@ -8,23 +8,23 @@
 ## note: all the install commands are run as root user!
 
 
-## Step 1.	Install build tools if not already installed, e.g. gcc, make, bison ect
+### Step 1.	Install build tools if not already installed, e.g. gcc, make, bison ect
 zypper install -t pattern devel_basis
 zypper install ghc-yaml perl-YAML
 
 
-## Step 2.	If you have downloaded the source files as a release package, skip this step
+### Step 2.	If you have downloaded the source files as a release package, skip this step
 ## Install GIT client if not already installed
 zypper install git-core
 
 
-## Step 3.	Install dependencies for PrivateOn-VPN package
+### Step 3.	Install dependencies for PrivateOn-VPN package
 zypper install perl-AnyEvent
 zypper install perl-qt4
 zypper install thttpd dnsmasq
 
 
-## Step 4.	At the time of writing, AnyEvent::Fork version 1.2 was the latest release, which unfortunately is broken
+### Step 4.	At the time of writing, AnyEvent::Fork version 1.2 was the latest release, which unfortunately is broken
 ## run:
 cpan install AnyEvent::Fork
 
@@ -44,7 +44,7 @@ make test
 make install
 
 
-## Step 5. 	Install more dependencies
+### Step 5. 	Install more dependencies
 cpan install AnyEvent::Fork::RPC
 cpan install File::Pid
 cpan install No::Worries::PidFile
@@ -54,16 +54,32 @@ cpan install List::MoreUtils
 cpan install IO::Pty::Easy
 
 
-## Step 6. 	Install service manifests, sudoer configuration and desktop link
+### Step 6a or 6b. 	Install service manifests
+
+## 6a 	for sysV init.d systems
+cp -p /opt/PrivateOn-VPN/init.d/vpn-monitor /etc/init.d/vpn-monitor
+ln -s /etc/init.d/vpn-monitor /usr/sbin/rcvpnmonitor
+service vpn-monitor status
+
+	## or ##
+
+## 6b 	for systemd services
+cp -p /opt/PrivateOn-VPN/install/vpnmonitor.service /etc/systemd/system/vpnmonitor.service
+ln -s service /sbin/rcvpnmonitor
+service vpnmonitor status
+
+
+### Step 7. 	Install sudoer configuration
 cd /opt/PrivateOn-VPN/install/
-cp -p init.d/vpn-monitor /etc/init.d/
-ln -s /etc/init.d/vpn-monitor /usr/sbin/rcvpn-monitor
 cp -pr sudoers* /etc/
+
+
+### Step 8. 	Install desktop link
 ## Replace --USER-- with your user name
 cp -p VPN.desktop /home/--USER--/Desktop/
 
 
-## Step 7. 	Test vpn-monitor installation
+### Step 9. 	Test vpn-monitor installation
 ## Run monitor from command as root:
 /opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
 
@@ -72,10 +88,10 @@ cat /var/log/PrivateOn.log
 
 ## If daemon initiates and stays up, press ctrl-C (note: it is normal for the daemon to not output anything to the CLI)
 ## Start as daemon
-rcvpn-monitor start
+rcvpnmonitor start
 
 
-## Step 8. 	Test vpn-gui installation
+### Step 10. 	Test vpn-gui installation
 ## Run GUI from command line as root:
 /opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
@@ -100,7 +116,7 @@ ln -s --RESULT-- /usr/lib/
       use Devel::Peek;
 
 
-## Step 9. 	After setup works, install and configure monit to guard that the vpn-monitor is always up
+### Step 11. 	After setup works, install and configure monit to guard that the vpn-monitor is always up
 zypper install monit
 cp -p /opt/PrivateOn-VPN/install/monitrc /etc/monitrc
 systemctl daemon-reload
