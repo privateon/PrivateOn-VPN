@@ -63,6 +63,9 @@ cp install/sudoers.d/PrivateOn %{buildroot}/etc/sudoers.d/
 
 %post
 grep /usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE /etc/ld.so.conf >/dev/null 2>&1 || (echo "/usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE" >> /etc/ld.so.conf && ldconfig)
+systemctl daemon-reload
+systemctl enable vpnmonitor.service
+systemctl start vpnmonitor.service
 
 %files
 /etc/sudoers.d/PrivateOn
