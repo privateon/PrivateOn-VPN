@@ -21,7 +21,7 @@
 Name:           privateon
 Packager:       Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 Version:        0.1
-Release:        4
+Release:        5
 Summary:        PrivateOn VPN package
 License:        Open Source
 Group:          Productivity/Networking/Security
