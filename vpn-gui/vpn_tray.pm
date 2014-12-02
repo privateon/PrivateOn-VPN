@@ -15,7 +15,7 @@ use QtCore4;
 use QtGui4;
 use MainWindow;
 use File::Basename;
-use vpn_status qw(get_api_status get_net_status);
+use vpn_status qw(get_net_status);
 use QtCore4::isa qw( Qt::Dialog );
 use QtCore4::slots
     setIcon => [],
@@ -23,6 +23,18 @@ use QtCore4::slots
     iconActivated => ['QSystemTrayIcon::ActivationReason'],
     hideWindow => [],
     messageClicked => [];
+
+
+# net status
+use constant {
+	NET_UNPROTECTED => 0,
+	NET_PROTECTED   => 1,
+	NET_BROKEN      => 2,
+	NET_CRIPPLED    => 3,
+	NET_ERROR       => 99,
+	NET_UNKNOWN     => 100
+};
+
 
 sub NEW
 {
@@ -34,7 +46,7 @@ sub NEW
 
 	my $internalTimer = Qt::Timer(this);  # create internal timer
 	this->connect($internalTimer, SIGNAL('timeout()'), SLOT('setIcon()'));
-	$internalTimer->start(0);	  # emit signal after 0 second
+	$internalTimer->start(10000);	  # emit signal every 10 second
 	this->{timer} = $internalTimer;
 
 	this->createActions();
@@ -43,6 +55,8 @@ sub NEW
 	this->connect(this->{showIconCheckBox}, SIGNAL 'toggled(bool)', this->{trayIcon}, SLOT 'setVisible(bool)');
 	this->connect(this->{trayIcon}, SIGNAL 'messageClicked()', this, SLOT 'messageClicked()');
 	this->connect(this->{trayIcon}, SIGNAL 'activated(QSystemTrayIcon::ActivationReason)', this, SLOT 'iconActivated(QSystemTrayIcon::ActivationReason)');
+
+	setIcon();
 
 	my $mainLayout = Qt::VBoxLayout();
 	$mainLayout->addWidget(this->{iconGroupBox});
@@ -54,6 +68,7 @@ sub NEW
 	this->setWindowTitle(this->tr('Systray'));
 	this->resize(400, 300);
 }
+
 
 sub iconActivated
 {
@@ -67,6 +82,7 @@ sub iconActivated
 	}
 }
 
+
 sub setVisible
 {
 	my ($visible) = @_;
@@ -75,25 +91,26 @@ sub setVisible
 	this->{maximizeAction}->setEnabled(!$visible);
 }
 
+
 sub setIcon
 {
 	my ($index) = @_;
-	
-	if (get_net_status() != 0) {
-		$index = 0; # network is down
+
+	my $current_status = get_net_status();
+
+	if ($current_status == NET_UNPROTECTED) {
+		$index = 0; # vpn is down
+	} elsif ($current_status == NET_PROTECTED) {
+		$index = 1; # vpn is up
 	} else {
-		if (get_api_status() == 1) {
-			$index = 1; # vpn is up
-		} else {
-			$index = 2; # vpn is down
-		}
+		$index = 2; # network is down
 	}
 	my $icon = this->{iconComboBox}->itemIcon($index);
 	this->{trayIcon}->setIcon($icon);
 	this->{windowIcon} = $icon;
 
 	this->{trayIcon}->setToolTip(this->{iconComboBox}->itemText($index));
-	this->{timer}->start(1000 * 10);
+	this->{timer}->start(10000);
 }
 
 
@@ -111,6 +128,7 @@ sub showMessage
 	setVisible(this->{show});
 }
 
+
 sub hideWindow
 {
 	my $window = this->{MainWindow};
@@ -119,6 +137,7 @@ sub hideWindow
 	setVisible(this->{show});
 }
 
+
 sub createIconGroupBox
 {
 	this->{iconGroupBox} = Qt::GroupBox(this->tr('Tray Icon'));
@@ -126,8 +145,8 @@ sub createIconGroupBox
 	this->{iconLabel} = Qt::Label('Icon:');
 
 	this->{iconComboBox} = Qt::ComboBox();
-	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/protected.png'), this->tr('Protected'));
 	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/unprotected.png'), this->tr('Unprotected'));
+	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/protected.png'), this->tr('Protected'));
 	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/broken.png'), this->tr('No Net'));
 
 	this->{showIconCheckBox} = Qt::CheckBox(this->tr('Show icon'));
@@ -153,6 +172,7 @@ sub createActions
 	this->{quitAction} = Qt::Action(this->tr('&Quit'), this);
 	this->connect(this->{quitAction}, SIGNAL 'triggered()', qApp, SLOT 'quit()');
 }
+
 
 sub createTrayIcon
 {
