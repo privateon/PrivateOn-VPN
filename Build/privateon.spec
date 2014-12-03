@@ -1,27 +1,17 @@
 #
 # spec file for package privateon
 #
-# Copyright (c) 2013 SUSE LINUX Products GmbH, Nuernberg, Germany.
+# PrivateOn-VPN -- Because privacy matters.
 #
-# All modifications and additions to the file contributed by third parties
-# remain the property of their copyright owners, unless otherwise agreed
-# upon. The license for this file, and modifications and additions to the
-# file, is the same license as for the pristine package itself (unless the
-# license for the pristine package is not an Open Source License, in which
-# case the license is the MIT License). An "Open Source License" is a
-# license that conforms to the Open Source Definition (Version 1.9)
-# published by the Open Source Initiative.
-
-# Please submit bugfixes or comments via http://bugs.opensuse.org/
+# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 #
-
-
-# See also http://en.opensuse.org/openSUSE:Specfile_guidelines
+# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# All rights reserved. Use is subject to license terms.
 
 Name:           privateon
 Packager:       Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 Version:        0.1
-Release:        4
+Release:        5
 Summary:        PrivateOn VPN package
 License:        Open Source
 Group:          Productivity/Networking/Security
@@ -80,6 +70,7 @@ systemctl start vpnmonitor.service
 /opt/PrivateOn-VPN/vpn-gui/images/protected.png
 /opt/PrivateOn-VPN/vpn-gui/images/unprotected.png
 /opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+/opt/PrivateOn-VPN/vpn-gui/kill_gui.sh
 /opt/PrivateOn-VPN/vpn-gui/vpn_install.pm
 /opt/PrivateOn-VPN/vpn-gui/vpn_status.pm
 /opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
