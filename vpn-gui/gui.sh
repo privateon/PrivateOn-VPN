@@ -12,8 +12,7 @@
 #
 #  vpn-gui/gui.sh     This script closes other vpn-gui instances and starts a new instance
 #
-#   Note: This script must be run with root credentials, preferably using sudo.
-#
+
 
 DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
