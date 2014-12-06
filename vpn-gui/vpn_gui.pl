@@ -21,18 +21,18 @@
 #
 
 
-#use strict;
-#use warnings;
+use strict;
+use warnings;
 use QtCore4;
 use QtGui4;
 use lib "/opt/PrivateOn-VPN/vpn-gui";
-use MainWindow;
+use vpn_window;
 use vpn_tray;
 
 sub main
 {
 	my $app = Qt::Application(\@ARGV);
-	my $window = MainWindow();
+	my $window = vpn_window();
 	my $tray = vpn_tray($window);
 
 	if ( defined($ARGV[0]) && ($ARGV[0] eq '1') ) {

@@ -16,7 +16,7 @@ use Getopt::Long;
 sub import{
 	no strict 'refs';
 	foreach (@_) {
-	   *{"MainWindow::$_"}=\&$_;
+	   *{"vpn_window::$_"}=\&$_;
 	 }
 }
 

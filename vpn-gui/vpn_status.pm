@@ -21,7 +21,7 @@ use IO::Socket::INET;
 sub import{
 	no strict 'refs';
 	foreach (@_) {
-		*{"MainWindow::$_"}=\&$_;
+		*{"vpn_window::$_"}=\&$_;
 		*{"vpn_tray::$_"}=\&$_;
 	 }
 }

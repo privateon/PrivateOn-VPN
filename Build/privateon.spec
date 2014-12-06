@@ -62,7 +62,6 @@ systemctl start vpnmonitor.service
 /etc/systemd/system/vpnmonitor.service
 /opt/PrivateOn-VPN/LICENSE
 /opt/PrivateOn-VPN/vpn-default.ini
-/opt/PrivateOn-VPN/vpn-gui/MainWindow.pm
 /opt/PrivateOn-VPN/vpn-gui/gui.sh
 /opt/PrivateOn-VPN/vpn-gui/icons/logo.png
 /opt/PrivateOn-VPN/vpn-gui/images/broken.png
@@ -74,6 +73,7 @@ systemctl start vpnmonitor.service
 /opt/PrivateOn-VPN/vpn-gui/vpn_install.pm
 /opt/PrivateOn-VPN/vpn-gui/vpn_status.pm
 /opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
+/opt/PrivateOn-VPN/vpn-gui/vpn_window.pm
 /opt/PrivateOn-VPN/vpn-monitor/htdocs/index.html
 /opt/PrivateOn-VPN/vpn-monitor/vpn_logger.sh
 /opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl

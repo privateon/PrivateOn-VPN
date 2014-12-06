@@ -11,11 +11,10 @@ package vpn_tray;
 
 use strict;
 #use warnings;
+use vpn_window;
+use vpn_status qw(get_net_status);
 use QtCore4;
 use QtGui4;
-use MainWindow;
-use File::Basename;
-use vpn_status qw(get_net_status);
 use QtCore4::isa qw( Qt::Dialog );
 use QtCore4::slots
     setIcon => [],
@@ -23,6 +22,7 @@ use QtCore4::slots
     iconActivated => ['QSystemTrayIcon::ActivationReason'],
     hideWindow => [],
     messageClicked => [];
+use File::Basename;
 
 
 # net status

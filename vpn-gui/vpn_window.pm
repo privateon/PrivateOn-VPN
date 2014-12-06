@@ -1,4 +1,4 @@
-package MainWindow;
+package vpn_window;
 
 #
 # PrivateOn-VPN -- Because privacy matters.
