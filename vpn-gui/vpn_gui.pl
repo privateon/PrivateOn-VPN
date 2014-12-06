@@ -16,8 +16,8 @@
 #   When you want to turn off the VPN, it must be done using the application,
 #   otherwise the backend and dispatcher script will reconnect the VPN.
 #
-#  Note: This program must be run with root credentials, preferably using sudo.
-#  Note: The vpn-gui requires that this daemon is running.
+#  Note: This program must be run with root privileges, preferably using sudo.
+#        This program requires that the vpn-monitor backend daemon is running.
 #
 
 
@@ -28,6 +28,14 @@ use QtGui4;
 use lib "/opt/PrivateOn-VPN/vpn-gui";
 use vpn_window;
 use vpn_tray;
+
+
+# Preflight check: is this program being run with root privileges
+if ($<) {
+	die "\nError:\tThis program must be run with root privileges.\n" .
+	    "\tStart program by running \'/opt/PrivateOn-VPN/vpn-gui/gui.sh\' as a non-root user.\n\n";
+}
+
 
 sub main
 {
