@@ -21,7 +21,7 @@ zypper install git-core
 ### Step 3.	Install dependencies for PrivateOn-VPN package
 zypper install perl-AnyEvent
 zypper install perl-qt4
-zypper install thttpd dnsmasq
+zypper install thttpd dnsmasq xhost
 
 
 ### Step 4.	At the time of writing, AnyEvent::Fork version 1.2 was the latest release, which unfortunately is broken

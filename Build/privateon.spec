@@ -19,7 +19,7 @@ Url:            http://www.privateon.net
 Source0:        privateon-0.1.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
-Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils perl-Guard perl-IO-Pty-Easy perl-UI-Dialog
+Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils perl-Guard perl-IO-Pty-Easy perl-UI-Dialog xhost
 # Sadly, openSUSE at this time provides only 3.72 (Workaround for perl 5.20 bug needs 3.73)
 # perl-common-sense >= 3.73
 
