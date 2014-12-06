@@ -1,11 +1,12 @@
 [Desktop Entry]
-Comment[en_US]=
-Comment=
-Exec=xhost SI:localuser:root; export XAUTHORITY=`echo $HOME`/.Xauthority; sudo /opt/PrivateOn-VPN/vpn-gui/gui.sh
-GenericName[en_US]=
-GenericName=
-Icon=/opt/PrivateOn-VPN/vpn-gui/icons/logo.png
+Comment[en_US]=PrivateOn-VPN GUI
+Comment=PrivateOn-VPN GUI
+Exec=/opt/PrivateOn-VPN/vpn-gui/gui.sh
+GenericName[en_US]=VPN frontend
+GenericName=VPN frontend
+Icon=/opt/PrivateOn-VPN/vpn-gui/images/PrivateOn-icon.png
 MimeType=
+Name[en_US]=VPN
 Name=VPN
 NoDisplay=false
 Path=

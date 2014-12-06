@@ -44,7 +44,7 @@ PrivateOn VPN is a robust VPN monitor/manager bundle
 %setup
 
 %install
-mkdir -p %{buildroot}/opt/PrivateOn-VPN/vpn-gui/{images,icons} %{buildroot}/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
+mkdir -p %{buildroot}/opt/PrivateOn-VPN/vpn-gui/images %{buildroot}/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
 for file in vpn-default.ini LICENSE $(find vpn-gui vpn-monitor -type f); do
     cp $file %{buildroot}/opt/PrivateOn-VPN/$file
 done
@@ -63,9 +63,9 @@ systemctl start vpnmonitor.service
 /opt/PrivateOn-VPN/LICENSE
 /opt/PrivateOn-VPN/vpn-default.ini
 /opt/PrivateOn-VPN/vpn-gui/gui.sh
-/opt/PrivateOn-VPN/vpn-gui/icons/logo.png
 /opt/PrivateOn-VPN/vpn-gui/images/broken.png
 /opt/PrivateOn-VPN/vpn-gui/images/logo.png
+/opt/PrivateOn-VPN/vpn-gui/images/PrivateOn-icon.png
 /opt/PrivateOn-VPN/vpn-gui/images/protected.png
 /opt/PrivateOn-VPN/vpn-gui/images/unprotected.png
 /opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
