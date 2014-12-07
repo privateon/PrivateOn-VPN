@@ -11,6 +11,7 @@ package vpn_window;
 
 use strict;
 use warnings;
+use feature 'state';
 use File::Path qw(make_path);
 use File::Copy qw(copy);
 use QtCore4;
@@ -38,16 +39,6 @@ use IO::Pty::Easy;
 use Try::Tiny;
 use File::Basename;
 
-my $net_status;
-my $internalTimer;
-my $buttonTimer;
-my $resumeTimer;
-my $last_pty_read = 4102444800000; # epoch year 2100 
-my $previous_status = 100;
-my $serverCountryCombo;
-my $cancelButton;
-my $okButton;
-
 
 use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
@@ -55,7 +46,7 @@ use constant {
 	DEBUG => 1,
 	ENABLE_VPN => 1,
 	ENABLE_DUAL_VPN => 1,
-	ENABLE_TOR_VPN => 0,
+	ENABLE_TOR_VPN => 0
 };
 
 # net status
@@ -67,14 +58,6 @@ use constant {
 	NET_ERROR       => 99,
 	NET_UNKNOWN     => 100	
 };
-
-sub country() {
-	return this->{id_country};
-}
-
-sub serverType() {
-	return this->{id_serverType};
-}
 
 sub closeEvent($$) {
 	my ($event) = @_;
@@ -101,23 +84,24 @@ sub NEW
 	this->{protocol} = 'tcp';
 
 	# timer implementation
-	$internalTimer = Qt::Timer(this);  # create internal timer
-	this->connect($internalTimer, SIGNAL('timeout()'), SLOT('updateStatus()'));
-	$internalTimer->start(5000);	  # emit signal every 5 second
+	this->{internalTimer} = Qt::Timer(this);  # create internal timer
+	this->connect(this->{internalTimer}, SIGNAL('timeout()'), SLOT('updateStatus()'));
+	this->{internalTimer}->start(5000);	  # emit signal every 5 second
 
 	# button enable/disable timer
-	$buttonTimer = Qt::Timer(this);
-	this->connect($buttonTimer, SIGNAL('timeout()'), SLOT('reenableButton()'));
+	this->{buttonTimer} = Qt::Timer(this);
+	this->connect(this->{buttonTimer}, SIGNAL('timeout()'), SLOT('reenableButton()'));
 
 	# Resume timer to continue processing after vpn disabled
-	$resumeTimer = Qt::Timer(this);
-	this->connect($resumeTimer, SIGNAL('timeout()'), SLOT('updateDefaultVpnResume()'));
+	this->{resumeTimer} = Qt::Timer(this);
+	this->connect(this->{resumeTimer}, SIGNAL('timeout()'), SLOT('updateDefaultVpnResume()'));
 
 	my $title = Qt::Label(this->tr('VPN default selection'));
 	my $image = Qt::Label();
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(300,150)));
 
 	my $status = Qt::TextEdit();
+	my $net_status;
 	my $api_status = get_api_status();
 	$status->setReadOnly(1);
 
@@ -129,7 +113,7 @@ sub NEW
 	setWindowFlags( Qt::Tool() | Qt::FramelessWindowHint() );
 
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
-	$serverCountryCombo = Qt::ComboBox();
+	this->{serverCountryCombo} = Qt::ComboBox();
 
 	# set default values to be used if values not found in ini file 
 	my $default_protocol = "tcp";
@@ -170,7 +154,7 @@ sub NEW
 	$status->setTextCursor($cursor);
 	$status->repaint();
 
-	this->{countrylist} = get_countries_for_combobox($serverCountryCombo);
+	this->{countrylist} = get_countries_for_combobox();
 
 	my $serverTypeLabel = Qt::Label(this->tr('Server Type: '));
 	my $serverTypeCombo = Qt::ComboBox();
@@ -186,23 +170,21 @@ sub NEW
 		this->{id_serverType} = 0;
 	}
 
-	my $turnoffButton = Qt::PushButton(this->tr('Turn off'));
-	this->{turnoffButton} = $turnoffButton;
+	this->{turnoffButton} = Qt::PushButton(this->tr('Turn off'));
 	if ($api_status != NET_PROTECTED and $api_status != NET_CRIPPLED) {
-		$turnoffButton->setEnabled(0);
+		this->{turnoffButton}->setEnabled(0);
 	}
-	$okButton = Qt::PushButton(this->tr('Refresh'));
-	$cancelButton = Qt::PushButton(this->tr('S/U Pass')); # Update server list and user/password
-	this->{pwButton} = $cancelButton;
+	this->{refreshButton} = Qt::PushButton(this->tr('Refresh'));
+	this->{userpassButton} = Qt::PushButton(this->tr('S/U Pass')); # Update server list and user/password
 
-	$turnoffButton->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	$cancelButton->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	$okButton->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	this->connect($cancelButton, SIGNAL "clicked()", this, SLOT "setUserInfo()");
-	this->connect($okButton, SIGNAL "clicked()", this, SLOT 'updateDefaultVpn()');
-	this->connect($turnoffButton, SIGNAL "clicked()", this, SLOT 'turnOffVpn()');
+	this->{turnoffButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->{userpassButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->{refreshButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->connect(this->{userpassButton}, SIGNAL "clicked()", this, SLOT "setUserInfo()");
+	this->connect(this->{refreshButton}, SIGNAL "clicked()", this, SLOT 'updateDefaultVpn()');
+	this->connect(this->{turnoffButton}, SIGNAL "clicked()", this, SLOT 'turnOffVpn()');
 
-	this->connect($serverCountryCombo, SIGNAL 'activated(int)', this, SLOT 'setCountry(int)');
+	this->connect(this->{serverCountryCombo}, SIGNAL 'activated(int)', this, SLOT 'setCountry(int)');
 	this->connect($serverTypeCombo, SIGNAL 'activated(int)', this, SLOT 'setServerType(int)');
 	
 	my $verticalLayout = Qt::VBoxLayout();
@@ -217,7 +199,7 @@ sub NEW
 
 	my $vpnInfoLayout = Qt::HBoxLayout();
 	$vpnInfoLayout->addWidget($serverCountryLabel);
-	$vpnInfoLayout->addWidget($serverCountryCombo, 1);
+	$vpnInfoLayout->addWidget(this->{serverCountryCombo}, 1);
 	$vpnInfoLayout->addStretch(1);
 	my $vpnTypeLayout = Qt::HBoxLayout();
 	$vpnTypeLayout->addWidget($serverTypeLabel);
@@ -225,11 +207,11 @@ sub NEW
 	$vpnTypeLayout->addWidget($serverTypeCombo, 1);
 	$vpnTypeLayout->addStretch(1);
 	my $buttonLayout = Qt::HBoxLayout();
-	$buttonLayout->addWidget($turnoffButton);
+	$buttonLayout->addWidget(this->{turnoffButton});
 	$buttonLayout->addSpacing(150);
-	$buttonLayout->addWidget($okButton);
+	$buttonLayout->addWidget(this->{refreshButton});
 	$buttonLayout->addSpacing(24);
-	$buttonLayout->addWidget($cancelButton);
+	$buttonLayout->addWidget(this->{userpassButton});
 	$buttonLayout->addStretch(1);
 	
 	$verticalLayout->addLayout($titleLayout);
@@ -247,8 +229,7 @@ sub NEW
 
 	my $pty;
 	unless ($pty = IO::Pty::Easy->new) {
-		my $status = this->{statusOutput};
-		my $net_status = "Could not create new pty.  Reason: " . $! . "\n";
+		$net_status = "Could not create new pty.  Reason: " . $! . "\n";
 		$status->setText($net_status);
 		my $cursor = $status->textCursor;
 		$cursor->movePosition(Qt::TextCursor::End());
@@ -264,8 +245,6 @@ sub is_vpn_active {
 }
 
 sub get_countries_for_combobox {
-	my ($serverCountryCombo) = @_;
-
 	my $default_vpntype = this->{vpnType};
 	my $default_ccode = this->{country};
 
@@ -292,13 +271,13 @@ sub get_countries_for_combobox {
 			   $retval;
 			} keys %$vpnlist) {
 		if ($c =~ /([a-z][a-z])([0-9])/) {
-			$serverCountryCombo->addItem(substr($country_codes{$1},0,15) . " " . $2);
+			this->{serverCountryCombo}->addItem(substr($country_codes{$1},0,15) . " " . $2);
 		} else {
-			$serverCountryCombo->addItem(substr($country_codes{$c},0,15));
+			this->{serverCountryCombo}->addItem(substr($country_codes{$c},0,15));
 		}
 		if ($default_ccode eq $c) {
 			if ($default_vpntype eq 'vpn') {
-				$serverCountryCombo->setCurrentIndex($i);
+				this->{serverCountryCombo}->setCurrentIndex($i);
 				this->{id_country} = $i;
 			} else {
 				$i ++;
@@ -325,11 +304,11 @@ sub get_countries_for_combobox {
 		} else {
 			$a_text = $c;
 		}
-		$serverCountryCombo->addItem($a_text);
+		this->{serverCountryCombo}->addItem($a_text);
 
 		if ($default_ccode eq $c) {
 			if ($default_vpntype eq 'double') {
-				$serverCountryCombo->setCurrentIndex($i);
+				this->{serverCountryCombo}->setCurrentIndex($i);
 				this->{id_country} = $i;
 			} else {
 				$i ++;
@@ -350,11 +329,11 @@ sub get_countries_for_combobox {
 			   $retval;
 			} keys %$torlist) {
 		$a_text = "Tor : " . substr($country_codes{$c},0,10);
-		$serverCountryCombo->addItem($a_text);
+		this->{serverCountryCombo}->addItem($a_text);
 
 		if ($default_ccode eq $c) {
 			if ($default_vpntype eq 'tor') {
-				$serverCountryCombo->setCurrentIndex($i);
+				this->{serverCountryCombo}->setCurrentIndex($i);
 				this->{id_country} = $i;
 			} else {
 				$i ++;
@@ -374,8 +353,8 @@ sub get_countries_for_combobox {
 sub turnOffVpn
 {
 	my $status = this->{statusOutput};
-	$net_status = "The VPN connection is deactivating,\n";
-	$net_status .= "Please hold on...\n";
+	my $net_status = "The VPN connection is deactivating,\n";
+	$net_status .= "Please hold on.\n";
 	$status->setText($net_status);
 	my $cursor = $status->textCursor;
 	$cursor->movePosition(Qt::TextCursor::End());
@@ -449,7 +428,7 @@ sub turnOffVpn
 	}
 	system("pkill -9 openvpn");
 #	force_refresh();	
-	$internalTimer->start(5*1000);
+	this->{internalTimer}->start(5*1000);
 
 	$net_status = "The VPN connection is deactivated.\n";
 	$status->setText($net_status);
@@ -464,19 +443,20 @@ sub turnOffVpn
 sub updateDefaultVpn
 {
 
-	$okButton->setEnabled(0);
-	$buttonTimer->start(20000);
+	this->{refreshButton}->setEnabled(0);
+	this->{buttonTimer}->start(20000);
 
 	take_a_break();
 #	force_refresh();
 	remove_dispatcher();
 
 	my $status = this->{statusOutput};
+	my $net_status;
 
 	my $api_status = get_api_status();
 	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
 		$net_status = "The VPN connection is deactivating,\n";
-		$net_status .= "Please hold on...\n";
+		$net_status .= "Please hold on.\n";
 		$status->setText($net_status);
 		my $cursor = $status->textCursor;
 		$cursor->movePosition(Qt::TextCursor::End());
@@ -540,15 +520,16 @@ sub updateDefaultVpn
 
 	# return to QT event loop for 4 seconds
 	print "Start resume timer\n" if DEBUG > 0;
-	$resumeTimer->start(2000);
+	this->{resumeTimer}->start(2000);
 }
 
 sub updateDefaultVpnResume
 {
 	system("pkill -9 openvpn");
-	$resumeTimer->stop;
+	this->{resumeTimer}->stop;
 	print "Resume activation of VPN\n" if DEBUG > 0;
 	my $status = this->{statusOutput};
+	my $net_status;
 
 	my $countrylist = this->{countrylist};
 	my $homedir = $ENV{HOME}.'/';
@@ -589,7 +570,7 @@ sub updateDefaultVpnResume
 		$cursor->movePosition(Qt::TextCursor::End());
 		$status->setTextCursor($cursor);
 		$status->repaint();
-		$internalTimer->start(10*60*1000);
+		this->{internalTimer}->start(10*60*1000);
 		return;
 	}
 
@@ -614,7 +595,7 @@ sub updateDefaultVpnResume
 		$cursor->movePosition(Qt::TextCursor::End());
 		$status->setTextCursor($cursor);
 		$status->repaint();
-		$internalTimer->start(10*60*1000);
+		this->{internalTimer}->start(10*60*1000);
 	} elsif ($return_code !=0) {
 		$net_status = "Unexcepted Error.\n";
 		$status->setText($net_status);
@@ -622,27 +603,29 @@ sub updateDefaultVpnResume
 		$cursor->movePosition(Qt::TextCursor::End());
 		$status->setTextCursor($cursor);
 		$status->repaint();
-		$internalTimer->start(10*60*1000);
+		this->{internalTimer}->start(10*60*1000);
 	}else {
 		$net_status = "The VPN connection will be activated,\n";
-		$net_status .= "Please hold on...\n";
+		$net_status .= "Please hold on.\n";
 		$status->setText($net_status);
 		my $cursor = $status->textCursor;
 		$cursor->movePosition(Qt::TextCursor::End());
 		$status->setTextCursor($cursor);
 		$status->repaint();
-		$internalTimer->start(5*1000);
+		this->{internalTimer}->start(5*1000);
 	}
 	enable_monitor();
 }
 
 sub showNetStatus {
 	my $status = this->{statusOutput};
+	my $net_status;
 	my $api_status = get_net_status();
+
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		$net_status = "The network is online!\n";
 	} elsif ($api_status == NET_CRIPPLED) {
-		$net_status .= "The network is in safemode!\n";
+		$net_status = "The network is in safemode!\n";
 	} else {
 		$net_status = "The network is offline!\n";
 	}
@@ -667,10 +650,12 @@ sub showNetStatus {
 }
 
 sub setUserInfo {
-	$cancelButton->setEnabled(0);
+	this->{userpassButton}->setEnabled(0);
 	my $tmp = getUserInfo();
 	my %userInfo = %$tmp;
 	my $status = this->{statusOutput};
+	my $net_status;
+
 	if ($userInfo{code} == 1) {
 		$net_status = "Note: There is no any connection in your system\n";
 		$status->setText($net_status);
@@ -740,8 +725,8 @@ sub setUserInfo {
 	}
 
 	# reread country list
-	$serverCountryCombo->clear();
-	this->{countrylist} = get_countries_for_combobox($serverCountryCombo);
+	this->{serverCountryCombo}->clear();
+	this->{countrylist} = get_countries_for_combobox();
 
 	# load new system connection into NetworkManager
 	system("/sbin/service network force-reload");
@@ -886,6 +871,7 @@ sub set_default_vpn
 		};
 	} else {
 		my $status = this->{statusOutput};
+		my $net_status = $status->toPlainText();
 		$net_status .= "No system connection file found.\n";
 		this->{statusOutput} = $status;
 		return 1;
@@ -956,28 +942,34 @@ sub set_default_vpn
 
 sub updateStatus
 {
-#	print "I am updateStatus!\n" if DEBUG > 0;
-	print "." if DEBUG > 0;
 	my $status = this->{statusOutput};
+	my $net_status = $status->toPlainText();
 	my $pty = this->{pty};
 	my $active_flag = $pty->is_active();
+
+	# initialize persistent variables
+	state $previous_status = 100;
+	state $last_pty_read = 4102444800000; # epoch year 2100
+
+	print "." if DEBUG > 0;
+
 	while ( my $output = $pty->read(0) ) {
 		$net_status .= $output;
 		$active_flag = 1;
 	}
 	if ($active_flag) {
-			$internalTimer->start(1000);
+		this->{internalTimer}->start(1000);
 		$last_pty_read = time();
 	} else {
 		if ( time() - $last_pty_read > 5*60 ) { # keep text for 5 min
 			my $api_status = showNetStatus();
 			if ($api_status == NET_PROTECTED) {
-				$internalTimer->start(5*60*1000);
+				this->{internalTimer}->start(5*60*1000);
 			} else {
-				$internalTimer->start(60*1000);
+				this->{internalTimer}->start(60*1000);
 			}
 		} elsif ( time() - $last_pty_read > 60 ) { # slow down refresh after 1 minute
-			$internalTimer->start(20*1000);
+			this->{internalTimer}->start(20*1000);
 		}
 	}
 
@@ -987,25 +979,22 @@ sub updateStatus
 
 	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
 		$net_status .= "Network state changed to NET_BROKEN.\n";
-	}
-	elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
+	} elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
 		$net_status .= "Network state changed to NET_ERROR.\n";
-	}
-	elsif ($current_status == NET_UNKNOWN && $tmp_previous != NET_UNKNOWN) {
+	} elsif ($current_status == NET_UNKNOWN && $tmp_previous != NET_UNKNOWN) {
 		$net_status .= "Network state changed to NET_UNKNOWN.\n";
-	}
-	if ($tmp_previous == NET_CRIPPLED && $current_status != NET_CRIPPLED) {
-		$cancelButton->setEnabled(1);
-		$net_status .= "Network restored from safemode.\n";
-	}
-	if ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
-		$cancelButton->setEnabled(0);
+	} elsif ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
+		this->{userpassButton}->setEnabled(0);
 		$net_status .= "Network placed in safemode, check VPN settings.\n";
-	}
-	if ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
-		$okButton->setEnabled(1);
-		$buttonTimer->stop();
+	} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
+		this->{refreshButton}->setEnabled(1);
+		this->{buttonTimer}->stop();
 		this->{turnoffButton}->setEnabled(1);
+	}
+
+	if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
+		this->{userpassButton}->setEnabled(1);
+		$net_status .= "Network restored from safemode.\n";
 	}
 
 	$status->setText($net_status);
@@ -1016,9 +1005,8 @@ sub updateStatus
 }
 
 sub reenableButton {
-	$okButton->setEnabled(1);
-	$buttonTimer->stop();
+	this->{refreshButton}->setEnabled(1);
+	this->{buttonTimer}->stop();
 }
 
 1;
-
