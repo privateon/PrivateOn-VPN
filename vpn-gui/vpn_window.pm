@@ -98,7 +98,7 @@ sub NEW
 
 	my $title = Qt::Label(this->tr('VPN default selection'));
 	my $image = Qt::Label();
-	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(300,150)));
+	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(260,130)));
 
 	my $status = Qt::TextEdit();
 	my $net_status;
@@ -114,6 +114,7 @@ sub NEW
 
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
 	this->{serverCountryCombo} = Qt::ComboBox();
+	this->{serverCountryCombo}->setMinimumContentsLength(16);
 
 	# set default values to be used if values not found in ini file 
 	my $default_protocol = "tcp";
@@ -159,6 +160,7 @@ sub NEW
 	my $serverTypeLabel = Qt::Label(this->tr('Server Type: '));
 	my $serverTypeCombo = Qt::ComboBox();
 
+	$serverTypeCombo->setMinimumContentsLength(16);
 	$serverTypeCombo->addItem('TCP');
 	$serverTypeCombo->addItem('UDP');
 
@@ -208,9 +210,9 @@ sub NEW
 	$vpnTypeLayout->addStretch(1);
 	my $buttonLayout = Qt::HBoxLayout();
 	$buttonLayout->addWidget(this->{turnoffButton});
-	$buttonLayout->addSpacing(150);
+	$buttonLayout->addSpacing(10);
 	$buttonLayout->addWidget(this->{refreshButton});
-	$buttonLayout->addSpacing(24);
+	$buttonLayout->addSpacing(10);
 	$buttonLayout->addWidget(this->{userpassButton});
 	$buttonLayout->addStretch(1);
 	
@@ -221,8 +223,9 @@ sub NEW
 	#$verticalLayout->addLayout($userinfoLayout);
 	$verticalLayout->addLayout($buttonLayout);
 	$centralWidget->setLayout($verticalLayout);
-	this->setMinimumSize(Qt::Size(400, 240));
-	this->setMaximumSize(Qt::Size(400, 240));
+# moo
+	this->setMinimumSize(Qt::Size(280, 240));
+	this->setMaximumSize(Qt::Size(280, 240));
 
 	setWindowTitle(this->tr('VPN Client'));
 	this->setCentralWidget($centralWidget);
@@ -997,7 +1000,7 @@ sub updateStatus
 		$net_status .= "Network restored from safemode.\n";
 	}
 
-        # progress indicator dots if last line of status texts is 'Please hold on'
+	# progress indicator dots if last line of status texts is 'Please hold on'
 	if ($net_status =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
 		unless ($net_status =~ /please\shold\son[.]?[\r]?[\n]?$/i) {		
 			chomp $net_status;
