@@ -120,7 +120,7 @@ sub NEW
 	if (-e INI_FILE) {
 		open my $vpn_ini, "<", INI_FILE;
 		while (my $line = <$vpn_ini>) {
-			if ($line =~/^id=(\S+)/) {
+			if ($line =~ /^id=(\S+)/) {
 				my $id = $1;
 				if ($id =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
 					this->{vpnType} = $1;
@@ -887,7 +887,7 @@ sub set_default_vpn
 	my $vpn_ini;
 	open $vpn_ini, "<", INI_FILE;
 	while (my $line = <$vpn_ini>) {
-		if ($line =~/^url\s*=\s*(.*)\s*/) {
+		if ($line =~ /^url\s*=\s*(.*)\s*/) {
 			$url = $1;
 			last;
 		}
@@ -995,6 +995,14 @@ sub updateStatus
 	if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
 		this->{userpassButton}->setEnabled(1);
 		$net_status .= "Network restored from safemode.\n";
+	}
+
+        # progress indicator dots if last line of status texts is 'Please hold on'
+	if ($net_status =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
+		unless ($net_status =~ /please\shold\son[.]?[\r]?[\n]?$/i) {		
+			chomp $net_status;
+		}
+		$net_status .= ".\n";
 	}
 
 	$status->setText($net_status);
