@@ -976,8 +976,8 @@ sub updateStatus
 		}
 	}
 
-	my $current_status = get_net_status();
-	my $tmp_previous = $previous_status;
+	my $current_status = get_net_status() || -3;
+	my $tmp_previous = $previous_status || -4;
 	$previous_status = $current_status;
 
 	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
