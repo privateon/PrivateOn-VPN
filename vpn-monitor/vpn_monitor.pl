@@ -207,6 +207,7 @@ sub log_net_status
 {
 	# for debug purposes
 	my $status = shift;
+	popup_dialog($status) if (DEBUG > 2);
 	$ctx->log(debug => "Network status is " . get_status_text($status) );
 }
 
@@ -303,6 +304,31 @@ sub read_api_url_from_inifile
 sub popup_dialog
 {
 	my $current_status = shift;
+	my $msg;
+
+	$ctx->log(debug => "Should display popup right about now ($current_status vs $previous_status)");
+	if ($current_status == NET_UNPROTECTED) {
+	    $msg = 'VPN connection is DOWN';
+	} elsif ($current_status == NET_PROTECTED) {
+	    $msg = 'VPN connection is UP!';
+	} elsif ($current_status == NET_BROKEN) {
+	    $msg = 'VPN connection is BROKEN';
+	} elsif ($current_status == NET_CRIPPLED) {
+	    $msg = 'Unable to start VPN. Network put in safe mode';
+	} else {
+	    $msg = 'Network is in an unknown status (' . $current_status . ')';
+	}
+	
+	my $username = getpwuid(1000);
+	my @cmd=('kdialog', '--display', ':0', '--title', 'PrivateOn-VPN', '--passivepopup', "$msg", 120);
+	if (DEBUG && defined($ctx)) {
+	    $ctx->log(debug => '"' . join('", "', @cmd) . '"');
+	}
+	if (system(@cmd) != 0) {
+	    $ctx->log( warn => "Failed to display pop-up!" );
+	    $ctx->log( warn => "system() return code $?, Error $!");
+	}
+	return;
 
 	# popup dialog to notify the user 
 	my $d = new UI::Dialog::Backend::KDialog ( backtitle => 'PrivateOn', title => 'VPN-monitor' );
@@ -622,10 +648,10 @@ sub refresh {
 		return(0);
 	} else {
 		$ctx->log(warn => "State changed from " . get_status_text($tmp_previous) . " to " . get_status_text($current_status) );
+		popup_dialog($current_status);
 		return(999) if ($tmp_previous == 999);
 		return(1) if ($current_status == NET_ERROR);
 		return(1) if ($current_status == NET_BROKEN);
-		popup_dialog($current_status);
 		update_status_file($current_status);
 	}
 }
