@@ -12,32 +12,30 @@ package vpn_window;
 use strict;
 use warnings;
 use feature 'state';
-use File::Path qw(make_path);
-use File::Copy qw(copy);
+use Socket;
 use QtCore4;
 use QtGui4;
 use QtCore4::isa qw( Qt::MainWindow);
 use QtCore4::slots
+	closeEvent => ['Qt::CloseEvent'],
+	reenableButton => [],
+	setCountry => ['int'],
+	setServerType => ['int'],
+	setUserInfo => [],
 	updateDefaultVpn => [],
 	updateDefaultVpnResume => [],
 	turnOffVpn => [],
-	setUserInfo => [],
-	setCountry => ['int'],
-	setServerType => ['int'],
-	setVpn => ['int'],
-	closeEvent => ['Qt::CloseEvent'],
-	reenableButton => [],
 	updateStatus => [];
-use Net::DBus qw(:typing);
 use Data::Dumper;
-use vpn_status qw(get_api_status get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
-use vpn_install qw(add_connections);
-use vpn_countries qw(get_country_codes get_country_list);
-use sigtrap;
-use Socket;
-use IO::Pty::Easy;
-use Try::Tiny;
 use File::Basename;
+use File::Copy qw(copy);
+use File::Path qw(make_path);
+use IO::Pty::Easy;
+use Net::DBus qw(:typing);
+use Try::Tiny;
+use vpn_countries qw(get_country_codes get_country_list);
+use vpn_install qw(add_connections);
+use vpn_status qw(get_api_status get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
 
 
 use constant {
@@ -49,7 +47,6 @@ use constant {
 	ENABLE_TOR_VPN => 0
 };
 
-# net status
 use constant {
 	NET_UNPROTECTED => 0,
 	NET_PROTECTED   => 1,
@@ -59,22 +56,9 @@ use constant {
 	NET_UNKNOWN     => 100	
 };
 
-sub closeEvent($$) {
-	my ($event) = @_;
-	this->hide();
-	$event->ignore();
-}
 
-sub moveEvent($$) {
-	my ($event) = @_;
-	this->move( (Qt::Application::desktop()->availableGeometry()->width() - this->width() - Qt::Application::desktop()->width()/28), (Qt::Application::desktop()->availableGeometry()->height() - this->height()) );
-	$event->ignore();
-}
-
-# [0]
-
-sub NEW
-{
+################              Setup Window              ################
+sub NEW {
 	my ($class) = @_;
 	$class->SUPER::NEW();
 	this->{id_country} = 0;
@@ -101,13 +85,12 @@ sub NEW
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(260,130)));
 
 	my $status = Qt::TextEdit();
-	my $net_status;
+	my $status_text;
 	my $api_status = get_api_status();
 	$status->setReadOnly(1);
 
 	$status->setMaximumHeight(60);
 	this->{statusOutput} = $status;
-	$ENV{status_output} = \$status;
 
 	my $centralWidget = Qt::Widget();
 	setWindowFlags( Qt::Tool() | Qt::FramelessWindowHint() );
@@ -134,28 +117,24 @@ sub NEW
 			}
 		}
 	} else {
-		$net_status = "No previous configuration file.\n";
+		$status_text = "No previous configuration file.\n";
 	}
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
-		$net_status .= "The network is online!\n";
+		$status_text .= "The network is online!\n";
 	} elsif ($api_status == NET_CRIPPLED) {
-		$net_status .= "The network is in safemode!\n";
+		$status_text .= "The network is in safemode!\n";
 	} else {
-		$net_status .= "The network is offline!\n";
+		$status_text .= "The network is offline!\n";
 	}
 	if ($api_status == NET_PROTECTED) {
-		$net_status .= "The VPN is up!\n";
+		$status_text .= "The VPN is up!\n";
 	} else {
-		$net_status .= "The VPN is down!\n";
+		$status_text .= "The VPN is down!\n";
 	}
-	$status->setText($net_status);
-	my $cursor = $status->textCursor;
-	$cursor->movePosition(Qt::TextCursor::End());
-	$status->setTextCursor($cursor);
-	$status->repaint();
+	setStatusText($status_text);
 
-	this->{countrylist} = get_countries_for_combobox();
+	this->{countrylist} = getComboboxCountries();
 
 	my $serverTypeLabel = Qt::Label(this->tr('Server Type: '));
 	my $serverTypeCombo = Qt::ComboBox();
@@ -223,7 +202,6 @@ sub NEW
 	#$verticalLayout->addLayout($userinfoLayout);
 	$verticalLayout->addLayout($buttonLayout);
 	$centralWidget->setLayout($verticalLayout);
-# moo
 	this->setMinimumSize(Qt::Size(280, 240));
 	this->setMaximumSize(Qt::Size(280, 240));
 
@@ -232,22 +210,126 @@ sub NEW
 
 	my $pty;
 	unless ($pty = IO::Pty::Easy->new) {
-		$net_status = "Could not create new pty.  Reason: " . $! . "\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
+		$status_text = "Could not create new pty.  Reason: " . $! . "\n";
+		setStatusText($status_text);
 		return(1);
 	}
 	this->{pty} = $pty;
 }
 
-sub is_vpn_active {
+
+################             QT events/slots            ################
+sub moveEvent($$) {
+	my ($event) = @_;
+	this->move( (Qt::Application::desktop()->availableGeometry()->width() - this->width() - Qt::Application::desktop()->width()/28), (Qt::Application::desktop()->availableGeometry()->height() - this->height()) );
+	$event->ignore();
+}
+
+
+sub closeEvent($$) {
+	my ($event) = @_;
+	this->hide();
+	$event->ignore();
+}
+
+
+sub setCountry {
+	my ($country) = @_;
+	this->{id_country} = $country;
+	print "country: ", $country."\n" if DEBUG > 0;
+}
+
+
+sub setServerType {
+	my ($type) = @_;
+	this->{id_serverType} = $type;
+	print "type: ", $type."\n" if DEBUG > 0;
+}
+
+
+sub reenableButton {
+	this->{refreshButton}->setEnabled(1);
+	this->{buttonTimer}->stop();
+}
+
+
+################           Helper subroutines           ################
+sub getConnections {
+	my $object = Net::DBus->system
+	    ->get_service("org.freedesktop.NetworkManager")
+	        ->get_object("/org/freedesktop/NetworkManager/Settings",
+	            "org.freedesktop.NetworkManager.Settings");
+
+	return $object->ListConnections();
+}
+
+
+sub getVpnConnection {
+	my ($connections) = @_;
+	my @return_conns = ();
+
+	foreach my $connection (@{$connections}) {
+		my $object = Net::DBus->system
+		    ->get_service("org.freedesktop.NetworkManager")
+		        ->get_object($connection,
+		            "org.freedesktop.NetworkManager.Settings.Connection");
+		my $settings = $object->GetSettings();
+		push(@return_conns, $settings) if ($settings->{connection}->{type} eq "vpn");
+	}
+	return \@return_conns;
+}
+
+
+sub isVpnActive {
 	return </sys/devices/virtual/net/tun*> ? 1 : 0;
 }
 
-sub get_countries_for_combobox {
+
+sub setStatusText {
+	my ($status_text) = @_;
+
+	my $status = this->{statusOutput};
+	$status->setText($status_text);
+	
+	# move cursor to end
+	my $cursor = $status->textCursor;
+	$cursor->movePosition(Qt::TextCursor::End());
+	$status->setTextCursor($cursor);
+	
+	$status->repaint();
+}
+
+
+sub showNetStatus {
+	my $status_text;
+	my $api_status = get_net_status();
+
+	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
+		$status_text = "The network is online!\n";
+	} elsif ($api_status == NET_CRIPPLED) {
+		$status_text = "The network is in safemode!\n";
+	} else {
+		$status_text = "The network is offline!\n";
+	}
+	if ($api_status == NET_PROTECTED) {
+		$status_text .= "The VPN is up!\n";
+		this->{turnoffButton}->setEnabled(1);
+	} elsif ($api_status == NET_CRIPPLED) {
+		$status_text .= "The VPN is down!\n";
+		this->{turnoffButton}->setEnabled(1);
+	} else {
+		$status_text .= "The VPN is down!\n";
+		this->{turnoffButton}->setEnabled(0);
+	}
+
+	print "$status_text.\n" if DEBUG > 0;
+	setStatusText($status_text);
+	return($api_status);
+}
+
+
+################              Country List              ################
+sub getComboboxCountries {
 	my $default_vpntype = this->{vpnType};
 	my $default_ccode = this->{country};
 
@@ -347,334 +429,28 @@ sub get_countries_for_combobox {
 		push @country, ("tor_" . $c);
 	}}
 	if (DEBUG > 0) {
-		print STDERR "get_countries_for_combobox returning " . scalar(@country) . " entries\n";
+		print STDERR "getComboboxCountries returning " . scalar(@country) . " entries\n";
 		print STDERR "Countries: " . join(", ", @country) . "\n";
 	}
 	return \@country;
 }
 
-sub turnOffVpn
-{
-	my $status = this->{statusOutput};
-	my $net_status = "The VPN connection is deactivating,\n";
-	$net_status .= "Please hold on.\n";
-	$status->setText($net_status);
-	my $cursor = $status->textCursor;
-	$cursor->movePosition(Qt::TextCursor::End());
-	$status->setTextCursor($cursor);
-	$status->repaint();
 
-	take_a_break();
-	remove_dispatcher();
-	disable_monitor();
-
-	if (get_api_status() == NET_CRIPPLED) {
-		undo_crippling();
-		$net_status = "The VPN connection is deactivated.\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		return 0;
-	}
-
-	# detect nmcli version
-	my @active_lines;
-	my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
-	if (DEBUG > 0) {
-		print STDERR "All active connections\n";
-		$test_string = '/usr/bin/nmcli conn show --active';
-	}
-	if ( system($test_string) == 0 ) {
-		# openSUSE 13.2 uses argument "conn show --active"
-		@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
-	} else {
-		# openSUSE 13.1 uses argument "conn status" 
-		@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
-	}
-	my @active_conns = ();
-	foreach my $conn (@active_lines) {
-		if ($conn =~ /(\S+)/) {
-			push @active_conns, $1;
-		}
-	}
-	
-	# failover command if above gave no results
-	if (!@active_conns) {
-		@active_lines = `/usr/bin/nmcli conn`;
-		foreach my $conn (@active_lines) {
-			if ($conn =~ /(\S+)/) {
-				push @active_conns, $1;
-			}
-		}
-	}
-	
-	my $vpn_connection = get_vpn_connection(get_connections());
-	my $pty = this->{pty};
-	foreach my $conn (@$vpn_connection) {
-		my $vpn_name = $conn->{connection}->{id};
-		if ($vpn_name ~~ @active_conns) {
-			try {
-				print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name && echo \"VPN deactivation successful\"");
-				# wait for connection to close
-				sleep(1);
-				for (my $i = 0; $i < 10; $i ++) {
-					if (!is_vpn_active()) { last; }
-					sleep 1;
-				}
-			} catch {
-				warn "caught error: $_\n";
-			}
-		}
-	}
-	system("pkill -9 openvpn");
-#	force_refresh();	
-	this->{internalTimer}->start(5*1000);
-
-	$net_status = "The VPN connection is deactivated.\n";
-	$status->setText($net_status);
-	$cursor->movePosition(Qt::TextCursor::End());
-	$status->setTextCursor($cursor);
-	$status->repaint();
-	
-	this->{turnoffButton}->setEnabled(0);
-	return 0;
-}
-
-sub updateDefaultVpn
-{
-
-	this->{refreshButton}->setEnabled(0);
-	this->{buttonTimer}->start(20000);
-
-	take_a_break();
-#	force_refresh();
-	remove_dispatcher();
-
-	my $status = this->{statusOutput};
-	my $net_status;
-
-	my $api_status = get_api_status();
-	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
-		$net_status = "The VPN connection is deactivating,\n";
-		$net_status .= "Please hold on.\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		print "VPN is active, deactivating...\n" if DEBUG > 0;
-
-		# detect nmcli version
-		my @active_lines;
-		my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
-		if (DEBUG > 0) {
-			print STDERR "All active connections\n";
-			$test_string = '/usr/bin/nmcli conn show --active';
-		}
-		if ( system($test_string) == 0 ) {
-			# openSUSE 13.2 uses argument "conn show --active"
-			@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
-		} else {
-			# openSUSE 13.1 uses argument "conn status" 
-			@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
-		}
-		my @active_conns = ();
-		foreach my $conn (@active_lines) {
-			if ($conn =~ /(\S+)/) {
-				push @active_conns, $1;
-			}
-		}
-		
-		# failover command if above gave no results
-		if (!@active_conns) {
-			@active_lines = `/usr/bin/nmcli conn`;
-			foreach my $conn (@active_lines) {
-				if ($conn =~ /(\S+)/) {
-					push @active_conns, $1;
-				}
-			}
-		}
-	
-		my $vpn_connection = get_vpn_connection(get_connections());
-		my $pty = this->{pty};
-		foreach my $conn (@$vpn_connection) {
-			my $vpn_name = $conn->{connection}->{id};
-			if ($vpn_name ~~ @active_conns) {
-				try {
-					print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name && echo \"VPN deactivation successful\"");
-					# wait for connection to close
-					sleep(1);
-					for (my $i = 0; $i < 10; $i ++) {
-						if (!is_vpn_active()) { last; }
-						sleep 1;
-					}
-				} catch {
-					warn "caught error: $_\n";
-				}
-			}
-		}
-	} elsif ($api_status == NET_CRIPPLED) {
-		undo_crippling();
-	}
-
-	# return to QT event loop for 4 seconds
-	print "Start resume timer\n" if DEBUG > 0;
-	this->{resumeTimer}->start(2000);
-}
-
-sub updateDefaultVpnResume
-{
-	system("pkill -9 openvpn");
-	this->{resumeTimer}->stop;
-	print "Resume activation of VPN\n" if DEBUG > 0;
-	my $status = this->{statusOutput};
-	my $net_status;
-
-	my $countrylist = this->{countrylist};
-	my $homedir = $ENV{HOME}.'/';
-	my $configfiledir = "/etc/openvpn/";
-	my $vpntype;
-	my $comment;
-	my $configfile;
-
-	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 0;
-	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 0;
-	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
-	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
-
-	# scan directory for matching files
-	my @tmplist = glob($configfiledir."*-$ccode-*-$stype.ovpn");
-	foreach my $file (@tmplist) {
-		# check file syntax, select first that matches
-		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
-			$vpntype = $1;
-			$ccode = $2;
-			$comment = $3;
-			$stype = $4;
-			$configfile = $file;
-			last;
-		}
-	}
-
-	if ( defined($configfile) && $configfile ne '' ) {
-		print "config file: $configfile\n" if DEBUG > 0;
-	}else {
-		print "glob files: @tmplist\n" if DEBUG > 0;
-		print "ERROR: config file: \{TYPE\}-$ccode-\{COMMENT\}-$stype.ovpn not found!\n" if DEBUG > 0;
-		$net_status = "Error: Configuration file not found!\n";
-		$net_status .="Check that the selected server\n";
-		$net_status .="supports protocol " . uc($stype) . ".\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		this->{internalTimer}->start(10*60*1000);
-		return;
-	}
-
-
-	my $pty = this->{pty};
-	my $pid = $pty->pid();
-	if ($pty->is_active and defined $pid) {
-		system("/usr/bin/kill -9 $pid");
-		$pty->close();
-		$pty = IO::Pty::Easy->new();
-		this->{pty} = $pty;
-		print "Killed the previous subprocess, pid: ",$pid."\n" if DEBUG > 0;
-	}
-	print "ccode = $ccode\tstype = $stype\n" if DEBUG > 0;
-	my $return_code = set_default_vpn($configfile, $ccode, $comment, $stype, $vpntype);
-	if ($return_code == 1) {
-		$net_status = "There are no VPN connections!\n";
-		$net_status .="Please click 'S/U Pass'\n"; 
-		$net_status .="to set your username/password\n"; 
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		this->{internalTimer}->start(10*60*1000);
-	} elsif ($return_code !=0) {
-		$net_status = "Unexcepted Error.\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		this->{internalTimer}->start(10*60*1000);
-	}else {
-		$net_status = "The VPN connection will be activated,\n";
-		$net_status .= "Please hold on.\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
-		this->{internalTimer}->start(5*1000);
-	}
-	enable_monitor();
-}
-
-sub showNetStatus {
-	my $status = this->{statusOutput};
-	my $net_status;
-	my $api_status = get_net_status();
-
-	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
-		$net_status = "The network is online!\n";
-	} elsif ($api_status == NET_CRIPPLED) {
-		$net_status = "The network is in safemode!\n";
-	} else {
-		$net_status = "The network is offline!\n";
-	}
-	if ($api_status == NET_PROTECTED) {
-		$net_status .= "The VPN is up!\n";
-		this->{turnoffButton}->setEnabled(1);
-	} elsif ($api_status == NET_CRIPPLED) {
-		$net_status .= "The VPN is down!\n";
-		this->{turnoffButton}->setEnabled(1);
-	} else {
-		$net_status .= "The VPN is down!\n";
-		this->{turnoffButton}->setEnabled(0);
-	}
-
-	print "$net_status.\n" if DEBUG > 0;
-	$status->setText($net_status);
-	my $cursor = $status->textCursor;
-	$cursor->movePosition(Qt::TextCursor::End());
-	$status->setTextCursor($cursor);
-	$status->repaint();
-	return($api_status);
-}
-
+################      Username/Password management      ################
 sub setUserInfo {
 	this->{userpassButton}->setEnabled(0);
 	my $tmp = getUserInfo();
 	my %userInfo = %$tmp;
-	my $status = this->{statusOutput};
-	my $net_status;
+	my $status_text;
 
 	if ($userInfo{code} == 1) {
-		$net_status = "Note: There is no any connection in your system\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
+		$status_text = "Note: There is no any connection in your system\n";
+		setStatusText($status_text);
 		$userInfo{username} = "";
 		$userInfo{password} = "";
 	} elsif ($userInfo{code} == 2) {
-		$net_status = "Note: Can not open your connection file\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
+		$status_text = "Note: Can not open your connection file\n";
+		setStatusText($status_text);
 		return $userInfo{code};
 	}
 	my ($ok, $password);
@@ -716,30 +492,21 @@ sub setUserInfo {
 				rename($_, $original_file);
 			}
 		}
-		my $status = this->{statusOutput};
-		$net_status = "Note: Can not create all connections for you\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
+		$status_text = "Note: Can not create all connections for you\n";
+		setStatusText($status_text);
 		return $userInfo{code};
 		}
 	}
 
 	# reread country list
 	this->{serverCountryCombo}->clear();
-	this->{countrylist} = get_countries_for_combobox();
+	this->{countrylist} = getComboboxCountries();
 
 	# load new system connection into NetworkManager
 	system("/sbin/service network force-reload");
 
-	$net_status = "Successful to set the Username and password!\n";
-	$status->setText($net_status);
-	my $cursor = $status->textCursor;
-	$cursor->movePosition(Qt::TextCursor::End());
-	$status->setTextCursor($cursor);
-	$status->repaint();
+	$status_text = "Successful to set the Username and password!\n";
+	setStatusText($status_text);
 }
 
 sub getUserInfo {
@@ -790,49 +557,164 @@ sub getUserInfo {
 	return \%userInfo;
 }
 
-sub setCountry
-{
-	my ($country) = @_;
-	this->{id_country} = $country;
-	print "country: ", $country."\n" if DEBUG > 0;
-}
 
-sub setServerType
-{
-	my ($type) = @_;
-	this->{id_serverType} = $type;
-	print "type: ", $type."\n" if DEBUG > 0;
-}
+################     Refresh/Activate VPN connection    ################
+sub updateDefaultVpn {
 
-### helper functions
-sub get_connections
-{
-	my $object = Net::DBus->system
-	    ->get_service("org.freedesktop.NetworkManager")
-	        ->get_object("/org/freedesktop/NetworkManager/Settings",
-	            "org.freedesktop.NetworkManager.Settings");
+	this->{refreshButton}->setEnabled(0);
+	this->{buttonTimer}->start(20000);
 
-	return $object->ListConnections();
-}
+	take_a_break();
+#	force_refresh();
+	remove_dispatcher();
 
-sub get_vpn_connection
-{
-	my ($connections) = @_;
-	my @return_conns = ();
+	my $status_text;
 
-	foreach my $connection (@{$connections}) {
-		my $object = Net::DBus->system
-		    ->get_service("org.freedesktop.NetworkManager")
-		        ->get_object($connection,
-		            "org.freedesktop.NetworkManager.Settings.Connection");
-		my $settings = $object->GetSettings();
-		push(@return_conns, $settings) if ($settings->{connection}->{type} eq "vpn");
+	my $api_status = get_api_status();
+	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
+		$status_text = "The VPN connection is deactivating,\n";
+		$status_text .= "Please hold on.\n";
+		setStatusText($status_text);
+		print "VPN is active, deactivating...\n" if DEBUG > 0;
+
+		# detect nmcli version
+		my @active_lines;
+		my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
+		if (DEBUG > 0) {
+			print STDERR "All active connections\n";
+			$test_string = '/usr/bin/nmcli conn show --active';
+		}
+		if ( system($test_string) == 0 ) {
+			# openSUSE 13.2 uses argument "conn show --active"
+			@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
+		} else {
+			# openSUSE 13.1 uses argument "conn status" 
+			@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
+		}
+		my @active_conns = ();
+		foreach my $conn (@active_lines) {
+			if ($conn =~ /(\S+)/) {
+				push @active_conns, $1;
+			}
+		}
+		
+		# failover command if above gave no results
+		if (!@active_conns) {
+			@active_lines = `/usr/bin/nmcli conn`;
+			foreach my $conn (@active_lines) {
+				if ($conn =~ /(\S+)/) {
+					push @active_conns, $1;
+				}
+			}
+		}
+	
+		my $vpn_connection = getVpnConnection(getConnections());
+		my $pty = this->{pty};
+		foreach my $conn (@$vpn_connection) {
+			my $vpn_name = $conn->{connection}->{id};
+			if ($vpn_name ~~ @active_conns) {
+				try {
+					print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
+					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name && echo \"VPN deactivation successful\"");
+					# wait for connection to close
+					sleep(1);
+					for (my $i = 0; $i < 10; $i ++) {
+						if (!isVpnActive()) { last; }
+						sleep 1;
+					}
+				} catch {
+					warn "caught error: $_\n";
+				}
+			}
+		}
+	} elsif ($api_status == NET_CRIPPLED) {
+		undo_crippling();
 	}
-	return \@return_conns;
+
+	# return to QT event loop for 4 seconds
+	print "Start resume timer\n" if DEBUG > 0;
+	this->{resumeTimer}->start(2000);
 }
 
-sub set_default_vpn
-{
+
+sub updateDefaultVpnResume {
+	system("pkill -9 openvpn");
+	this->{resumeTimer}->stop;
+	print "Resume activation of VPN\n" if DEBUG > 0;
+	my $status_text;
+
+	my $countrylist = this->{countrylist};
+	my $homedir = $ENV{HOME}.'/';
+	my $configfiledir = "/etc/openvpn/";
+	my $vpntype;
+	my $comment;
+	my $configfile;
+
+	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 0;
+	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 0;
+	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
+	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
+
+	# scan directory for matching files
+	my @tmplist = glob($configfiledir."*-$ccode-*-$stype.ovpn");
+	foreach my $file (@tmplist) {
+		# check file syntax, select first that matches
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
+			$vpntype = $1;
+			$ccode = $2;
+			$comment = $3;
+			$stype = $4;
+			$configfile = $file;
+			last;
+		}
+	}
+
+	if ( defined($configfile) && $configfile ne '' ) {
+		print "config file: $configfile\n" if DEBUG > 0;
+	}else {
+		print "glob files: @tmplist\n" if DEBUG > 0;
+		print "ERROR: config file: \{TYPE\}-$ccode-\{COMMENT\}-$stype.ovpn not found!\n" if DEBUG > 0;
+		$status_text = "Error: Configuration file not found!\n";
+		$status_text .="Check that the selected server\n";
+		$status_text .="supports protocol " . uc($stype) . ".\n";
+		setStatusText($status_text);
+		this->{internalTimer}->start(10*60*1000);
+		return;
+	}
+
+
+	my $pty = this->{pty};
+	my $pid = $pty->pid();
+	if ($pty->is_active and defined $pid) {
+		system("/usr/bin/kill -9 $pid");
+		$pty->close();
+		$pty = IO::Pty::Easy->new();
+		this->{pty} = $pty;
+		print "Killed the previous subprocess, pid: ",$pid."\n" if DEBUG > 0;
+	}
+	print "ccode = $ccode\tstype = $stype\n" if DEBUG > 0;
+	my $return_code = setDefaultVpn($configfile, $ccode, $comment, $stype, $vpntype);
+	if ($return_code == 1) {
+		$status_text = "There are no VPN connections!\n";
+		$status_text .="Please click 'S/U Pass'\n"; 
+		$status_text .="to set your username/password\n"; 
+		setStatusText($status_text);
+		this->{internalTimer}->start(10*60*1000);
+	} elsif ($return_code !=0) {
+		$status_text = "Unexcepted Error.\n";
+		setStatusText($status_text);
+		this->{internalTimer}->start(10*60*1000);
+	}else {
+		$status_text = "The VPN connection will be activated,\n";
+		$status_text .= "Please hold on.\n";
+		setStatusText($status_text);
+		this->{internalTimer}->start(5*1000);
+	}
+	enable_monitor();
+}
+
+
+sub setDefaultVpn {
 	my ($configfile, $ccode, $comment, $type, $vpntype) = @_;
 	my $uuid = "";
 	my $url = "none";
@@ -847,13 +729,8 @@ sub set_default_vpn
 	my $id = $vpntype . "-" . $ccode . "-" . $comment . "-" . $type;
 	if (-r $sysconnections . $id && -r '/etc/ca-certificates/' . $id . ".ca" && -r '/etc/ca-certificates/' . $id . ".auth") {
 		unless (open IN, $sysconnections.$id) {
-			my $status = this->{statusOutput};
-			my $net_status = "Could not open VPN config file for reading. Reason: " . $! . "\n";
-			$status->setText($net_status);
-			my $cursor = $status->textCursor;
-			$cursor->movePosition(Qt::TextCursor::End());
-			$status->setTextCursor($cursor);
-			$status->repaint();
+			my $status_text = "Could not open VPN config file for reading. Reason: " . $! . "\n";
+			setStatusText($status_text);
 			return(1);
 		}
 		while (<IN>) {
@@ -874,8 +751,8 @@ sub set_default_vpn
 		};
 	} else {
 		my $status = this->{statusOutput};
-		my $net_status = $status->toPlainText();
-		$net_status .= "No system connection file found.\n";
+		my $status_text = $status->toPlainText();
+		$status_text .= "No system connection file found.\n";
 		this->{statusOutput} = $status;
 		return 1;
 	}
@@ -899,13 +776,8 @@ sub set_default_vpn
 
 	# write ini file
 	unless (open $vpn_ini, ">", INI_FILE) {
-		my $status = this->{statusOutput};
-		my $net_status = "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
+		my $status_text = "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";
+		setStatusText($status_text);
 		return(1);
 	}
 	print $vpn_ini "[default-vpn]\n";
@@ -916,16 +788,11 @@ sub set_default_vpn
 	print $vpn_ini "monitor=enabled\n";
 	close $vpn_ini;
 
-	### set the vpn to start after boot
+	### setup dispatcher file
 	my $vpn_d;
 	unless (open $vpn_d, ">", DISPATCH_FILE) {
-		my $status = this->{statusOutput};
-		my $net_status = "Could not create '" . DISPATCH_FILE . "'  Reason: " . $! . "\n";
-		$status->setText($net_status);
-		my $cursor = $status->textCursor;
-		$cursor->movePosition(Qt::TextCursor::End());
-		$status->setTextCursor($cursor);
-		$status->repaint();
+		my $status_text = "Could not create '" . DISPATCH_FILE . "'  Reason: " . $! . "\n";
+		setStatusText($status_text);
 		return(1);
 	}
 	print $vpn_d "#!/bin/sh\n";
@@ -943,10 +810,90 @@ sub set_default_vpn
 	return 0;
 }
 
-sub updateStatus
-{
+
+################        Deactivate VPN connection       ################
+sub turnOffVpn {
+	my $status_text = "The VPN connection is deactivating,\n";
+	$status_text .= "Please hold on.\n";
+	setStatusText($status_text);
+
+	take_a_break();
+	remove_dispatcher();
+	disable_monitor();
+
+	if (get_api_status() == NET_CRIPPLED) {
+		undo_crippling();
+		$status_text = "The VPN connection is deactivated.\n";
+		setStatusText($status_text);
+		return 0;
+	}
+
+	# detect nmcli version
+	my @active_lines;
+	my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
+	if (DEBUG > 0) {
+		print STDERR "All active connections\n";
+		$test_string = '/usr/bin/nmcli conn show --active';
+	}
+	if ( system($test_string) == 0 ) {
+		# openSUSE 13.2 uses argument "conn show --active"
+		@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
+	} else {
+		# openSUSE 13.1 uses argument "conn status" 
+		@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
+	}
+	my @active_conns = ();
+	foreach my $conn (@active_lines) {
+		if ($conn =~ /(\S+)/) {
+			push @active_conns, $1;
+		}
+	}
+	
+	# failover command if above gave no results
+	if (!@active_conns) {
+		@active_lines = `/usr/bin/nmcli conn`;
+		foreach my $conn (@active_lines) {
+			if ($conn =~ /(\S+)/) {
+				push @active_conns, $1;
+			}
+		}
+	}
+	
+	my $vpn_connection = getVpnConnection(getConnections());
+	my $pty = this->{pty};
+	foreach my $conn (@$vpn_connection) {
+		my $vpn_name = $conn->{connection}->{id};
+		if ($vpn_name ~~ @active_conns) {
+			try {
+				print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
+				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name && echo \"VPN deactivation successful\"");
+				# wait for connection to close
+				sleep(1);
+				for (my $i = 0; $i < 10; $i ++) {
+					if (!isVpnActive()) { last; }
+					sleep 1;
+				}
+			} catch {
+				warn "caught error: $_\n";
+			}
+		}
+	}
+	system("pkill -9 openvpn");
+#	force_refresh();	
+	this->{internalTimer}->start(5*1000);
+
+	$status_text = "The VPN connection is deactivated.\n";
+	setStatusText($status_text);
+	
+	this->{turnoffButton}->setEnabled(0);
+	return 0;
+}
+
+
+################                Main Loop               ################
+sub updateStatus {
 	my $status = this->{statusOutput};
-	my $net_status = $status->toPlainText();
+	my $status_text = $status->toPlainText();
 	my $pty = this->{pty};
 	my $active_flag = $pty->is_active();
 
@@ -957,7 +904,7 @@ sub updateStatus
 	print "." if DEBUG > 0;
 
 	while ( my $output = $pty->read(0) ) {
-		$net_status .= $output;
+		$status_text .= $output;
 		$active_flag = 1;
 	}
 	if ($active_flag) {
@@ -981,14 +928,14 @@ sub updateStatus
 	$previous_status = $current_status;
 
 	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
-		$net_status .= "Network state changed to NET_BROKEN.\n";
+		$status_text .= "Network state changed to NET_BROKEN.\n";
 	} elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
-		$net_status .= "Network state changed to NET_ERROR.\n";
+		$status_text .= "Network state changed to NET_ERROR.\n";
 	} elsif ($current_status == NET_UNKNOWN && $tmp_previous != NET_UNKNOWN) {
-		$net_status .= "Network state changed to NET_UNKNOWN.\n";
+		$status_text .= "Network state changed to NET_UNKNOWN.\n";
 	} elsif ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
 		this->{userpassButton}->setEnabled(0);
-		$net_status .= "Network placed in safemode, check VPN settings.\n";
+		$status_text .= "Network placed in safemode, check VPN settings.\n";
 	} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
 		this->{refreshButton}->setEnabled(1);
 		this->{buttonTimer}->stop();
@@ -997,27 +944,18 @@ sub updateStatus
 
 	if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
 		this->{userpassButton}->setEnabled(1);
-		$net_status .= "Network restored from safemode.\n";
+		$status_text .= "Network restored from safemode.\n";
 	}
 
 	# progress indicator dots if last line of status texts is 'Please hold on'
-	if ($net_status =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
-		unless ($net_status =~ /please\shold\son[.]?[\r]?[\n]?$/i) {		
-			chomp $net_status;
+	if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
+		unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {		
+			chomp $status_text;
 		}
-		$net_status .= ".\n";
+		$status_text .= ".\n";
 	}
 
-	$status->setText($net_status);
-	my $cursor = $status->textCursor;
-	$cursor->movePosition(Qt::TextCursor::End());
-	$status->setTextCursor($cursor);
-	$status->repaint();
-}
-
-sub reenableButton {
-	this->{refreshButton}->setEnabled(1);
-	this->{buttonTimer}->stop();
+	setStatusText($status_text);
 }
 
 1;
