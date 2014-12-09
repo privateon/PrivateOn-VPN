@@ -561,6 +561,41 @@ sub undo_crippling_on_error()
 	return 0;
 }
 
+sub check_crippled {
+    # Returns true if crippling is on
+    my $pslist = qx!/usr/bin/ps -aef!;
+    my @pslist = split("\n", $pslist);
+    my $line;
+    my $thttpd_pid  = undef;
+    my $dnsmasq_pid = undef;
+    while ( defined($line = shift(@pslist))) {
+	if ($line =~ /^[^\d]+\s*(\d+).*thttpd/) {
+	    $thttpd_pid = $1;
+	} elsif ($line =~ /^[^\d]+\s*(\d+).*dnsmasq/) {
+	    $dnsmasq_pid = $1;
+	}
+    }
+    return $thttpd_pid  if (defined($thttpd_pid ));
+    return $dnsmasq_pid if (defined($dnsmasq_pid));
+    my $route = qx!/sbin/route -n!;
+    my @routelist = split("\n", $route);
+    while ( defined($line = shift(@routelist))) {
+	if ($line =~ /^0\.0\.0\.0/) {
+	    return "Default route";
+	}
+    }
+    my $nameservers = qx!/usr/bin/grep nameserver /etc/resolv.conf!;
+    my @nameservers = split("\n", $nameservers);
+    my @resolvers = ();
+    my $resolver;
+    while (defined($line = shift(@nameservers))) {
+	if ($line =~ /^nameserver\s*(\d+\.\d+\.\d+\.\d+)/) {
+	    $resolver = $1;
+	    push @resolvers, $resolver;
+	    return "Localhost as DNS" if $resolver eq '127.0.0.1';
+	}
+    }
+}
 
 ################	     VPN Retry fork		################
 
