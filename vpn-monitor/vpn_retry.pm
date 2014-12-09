@@ -93,7 +93,7 @@ sub activate_vpn
 	unless (open $vpn_ini, INI_FILE) {
 		$ctx->log(error => "Could not open '" . INI_FILE . "'  Reason: " . $! ." (vpn_retry child)");
 		$ctx->log(error => "Activating failure-mode VPN (vpn_retry child)");
-		return system("/usr/bin/nmcli conn up id vpn-de.nordvpn-tcp");
+		return system("/usr/bin/nmcli conn up id vpn-de.nordvpn-tcp >/dev/null 2&1");
 	}
 	while (my $line = <$vpn_ini>) {
 		if ($line =~/^id=(\S+)/) {
@@ -102,7 +102,7 @@ sub activate_vpn
 		}
 	}
 	close $vpn_ini;
-	return system("/usr/bin/nmcli conn up id $id");
+	return system("/usr/bin/nmcli conn up id $id >/dev/null 2&1");
 }
 
 
