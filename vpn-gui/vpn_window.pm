@@ -86,7 +86,7 @@ sub NEW {
 
 	my $status = Qt::TextEdit();
 	my $status_text;
-	my $api_status = get_api_status();
+	my $api_status = getApiStatus();
 	$status->setReadOnly(1);
 
 	$status->setMaximumHeight(60);
@@ -302,7 +302,7 @@ sub setStatusText {
 
 sub showNetStatus {
 	my $status_text;
-	my $api_status = get_net_status();
+	my $api_status = getNetStatus();
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		$status_text = "The network is online!\n";
@@ -333,8 +333,8 @@ sub getComboboxCountries {
 	my $default_vpntype = this->{vpnType};
 	my $default_ccode = this->{country};
 
-	my %country_codes = get_country_codes();
-	my ($vpnlist, $duallist, $torlist) = get_country_list();
+	my %country_codes = getCountryCodes();
+	my ($vpnlist, $duallist, $torlist) = getCountryList();
 	my @country = ();
 	my $i = 0;
 	my $c;
@@ -467,9 +467,9 @@ sub setUserInfo {
 		}
 	}
 
-	my $ac_rc; # add_connections() return code
+	my $ac_rc; # addConnections() return code
 	if ($ok) {
-		$ac_rc = add_connections($username, $password);
+		$ac_rc = addConnections($username, $password);
 		if ($ac_rc == 0) {
 			while (</etc/openvpn/*.ovpn>) {
 				copy($_,$_ . '.bak');
@@ -564,13 +564,13 @@ sub updateDefaultVpn {
 	this->{refreshButton}->setEnabled(0);
 	this->{buttonTimer}->start(20000);
 
-	take_a_break();
-#	force_refresh();
-	remove_dispatcher();
+	takeABreak();
+#	forceRefresh();
+	removeDispatcher();
 
 	my $status_text;
 
-	my $api_status = get_api_status();
+	my $api_status = getApiStatus();
 	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
 		$status_text = "The VPN connection is deactivating,\n";
 		$status_text .= "Please hold on.\n";
@@ -628,7 +628,7 @@ sub updateDefaultVpn {
 			}
 		}
 	} elsif ($api_status == NET_CRIPPLED) {
-		undo_crippling();
+		undoCrippling();
 	}
 
 	# return to QT event loop for 4 seconds
@@ -710,7 +710,7 @@ sub updateDefaultVpnResume {
 		setStatusText($status_text);
 		this->{internalTimer}->start(5*1000);
 	}
-	enable_monitor();
+	enableMonitor();
 }
 
 
@@ -817,12 +817,12 @@ sub turnOffVpn {
 	$status_text .= "Please hold on.\n";
 	setStatusText($status_text);
 
-	take_a_break();
-	remove_dispatcher();
-	disable_monitor();
+	takeABreak();
+	removeDispatcher();
+	disableMonitor();
 
-	if (get_api_status() == NET_CRIPPLED) {
-		undo_crippling();
+	if (getApiStatus() == NET_CRIPPLED) {
+		undoCrippling();
 		$status_text = "The VPN connection is deactivated.\n";
 		setStatusText($status_text);
 		return 0;
@@ -879,7 +879,7 @@ sub turnOffVpn {
 		}
 	}
 	system("pkill -9 openvpn");
-#	force_refresh();	
+#	forceRefresh();	
 	this->{internalTimer}->start(5*1000);
 
 	$status_text = "The VPN connection is deactivated.\n";
@@ -923,7 +923,7 @@ sub updateStatus {
 		}
 	}
 
-	my $current_status = get_net_status() || -3;
+	my $current_status = getNetStatus() || -3;
 	my $tmp_previous = $previous_status || -4;
 	$previous_status = $current_status;
 

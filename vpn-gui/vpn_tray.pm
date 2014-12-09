@@ -96,7 +96,7 @@ sub setIcon
 {
 	my ($index) = @_;
 
-	my $current_status = get_net_status();
+	my $current_status = getNetStatus();
 
 	if ($current_status == NET_UNPROTECTED) {
 		$index = 0; # vpn is down
