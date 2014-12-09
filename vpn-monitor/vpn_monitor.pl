@@ -885,6 +885,9 @@ tcp_server(
 				$self->push_write("ok - dispatch file unlinked\n");
 				$ctx->log(debug => "Dispatch file unlinked") if DEBUG > 0;
 			}
+			elsif ($buf eq "check-crippling") {
+			        $self->push_write(check_crippled());
+			}
 			elsif ($buf eq "undo-crippling") {
 				spawn_undo_crippling();
 				$self->push_write("ok - called spawn_undo_crippling()\n");

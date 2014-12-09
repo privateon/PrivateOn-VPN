@@ -54,6 +54,23 @@ sub getApiStatus {
 	return $response;
 }
 
+sub getCripplingStatus {
+	$| = 1;
+	my $sock = IO::Socket::INET->new(
+		PeerHost => '127.0.0.1',
+		PeerPort => '44244',
+		Proto => 'tcp',
+	);
+	return NET_ERROR unless $sock;
+	$sock->send("check-crippling\n");
+	shutdown($sock, 1);
+	my $response = "";
+	$sock->recv($response, 4);
+	$sock->close();
+	chomp($response);
+	return $response;
+}
+
 
 sub getNetStatus {
 	$| = 1;

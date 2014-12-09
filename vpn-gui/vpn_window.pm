@@ -35,8 +35,7 @@ use Net::DBus qw(:typing);
 use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections);
-use vpn_status qw(getApiStatus getNetStatus takeABreak removeDispatcher disableMonitor undoCrippling forceRefresh enableMonitor);
-
+use vpn_status qw(getApiStatus getNetStatus takeABreak removeDispatcher disableMonitor undoCrippling forceRefresh enableMonitor getCripplingStatus);
 
 use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
@@ -570,6 +569,8 @@ sub updateDefaultVpn {
 
 	my $status_text;
 
+	undoCrippling() if (getCripplingStatus());
+
 	my $api_status = getApiStatus();
 	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
 		$status_text = "The VPN connection is deactivating,\n";
@@ -821,7 +822,7 @@ sub turnOffVpn {
 	removeDispatcher();
 	disableMonitor();
 
-	if (getApiStatus() == NET_CRIPPLED) {
+	if (getApiStatus() == NET_CRIPPLED || getCripplingStatus()) {
 		undoCrippling();
 		$status_text = "The VPN connection is deactivated.\n";
 		setStatusText($status_text);
