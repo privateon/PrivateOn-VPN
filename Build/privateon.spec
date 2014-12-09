@@ -10,13 +10,13 @@
 
 Name:           privateon
 Packager:       Kimmo R. M. Hovi <kimmo@fairwarning.fi>
-Version:        0.1
-Release:        5
+Version:        0.9
+Release:        1
 Summary:        PrivateOn VPN package
 License:        Open Source
 Group:          Productivity/Networking/Security
 Url:            http://www.privateon.net
-Source0:        privateon-0.1.tar
+Source0:        privateon-0.9.tar
 Distribution:   openSUSE 13.2
 #BuildRequires:  
 Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq monit perl-HTTP-Lite perl-List-MoreUtils perl-Guard perl-IO-Pty-Easy perl-UI-Dialog xhost
@@ -74,6 +74,7 @@ systemctl start vpnmonitor.service
 /opt/PrivateOn-VPN/vpn-gui/vpn_status.pm
 /opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
 /opt/PrivateOn-VPN/vpn-gui/vpn_window.pm
+/opt/PrivateOn-VPN/vpn-gui/vpn_countries.pm
 /opt/PrivateOn-VPN/vpn-monitor/htdocs/index.html
 /opt/PrivateOn-VPN/vpn-monitor/vpn_logger.sh
 /opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
