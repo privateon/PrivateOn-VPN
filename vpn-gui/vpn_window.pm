@@ -615,7 +615,7 @@ sub updateDefaultVpn {
 			if ($vpn_name ~~ @active_conns) {
 				try {
 					print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null 2>&1 && echo \"VPN deactivation successful\"");
+					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
 					# wait for connection to close
 					sleep(1);
 					for (my $i = 0; $i < 10; $i ++) {
@@ -744,7 +744,7 @@ sub setDefaultVpn {
 			}
 			close IN;
 			try {
-				$pty->spawn("/usr/bin/nmcli conn up uuid $uuid >/dev/null 2>&1 && echo \"VPN activation successful\"");
+				$pty->spawn("/usr/bin/nmcli conn up uuid $uuid >/dev/null && echo \"VPN activation successful\"");
 			} catch {
 			warn "caught error: $_\n";
 			$return_code = 2;
@@ -866,7 +866,7 @@ sub turnOffVpn {
 		if ($vpn_name ~~ @active_conns) {
 			try {
 				print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null 2>&1 && echo \"VPN deactivation successful\"");
+				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
 				# wait for connection to close
 				sleep(1);
 				for (my $i = 0; $i < 10; $i ++) {
