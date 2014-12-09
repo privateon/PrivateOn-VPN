@@ -33,9 +33,9 @@ use File::Path qw(make_path);
 use IO::Pty::Easy;
 use Net::DBus qw(:typing);
 use Try::Tiny;
-use vpn_countries qw(get_country_codes get_country_list);
-use vpn_install qw(add_connections);
-use vpn_status qw(get_api_status get_net_status take_a_break remove_dispatcher disable_monitor undo_crippling force_refresh enable_monitor);
+use vpn_countries qw(getCountryCodes getCountryList);
+use vpn_install qw(addConnections);
+use vpn_status qw(getApiStatus getNetStatus takeABreak removeDispatcher disableMonitor undoCrippling forceRefresh enableMonitor);
 
 
 use constant {
