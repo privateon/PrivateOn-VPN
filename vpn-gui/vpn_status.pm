@@ -37,8 +37,7 @@ use constant {
 };
 
 
-sub get_api_status
-{
+sub getApiStatus {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -56,8 +55,7 @@ sub get_api_status
 }
 
 
-sub get_net_status()
-{
+sub getNetStatus {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -75,8 +73,7 @@ sub get_net_status()
 }
 
 
-sub take_a_break()
-{
+sub takeABreak {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -91,8 +88,7 @@ sub take_a_break()
 }
 
 
-sub remove_dispatcher()
-{
+sub removeDispatcher {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -107,8 +103,7 @@ sub remove_dispatcher()
 }
 
 
-sub disable_monitor()
-{
+sub disableMonitor {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -123,8 +118,7 @@ sub disable_monitor()
 }
 
 
-sub enable_monitor()
-{
+sub enableMonitor {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -139,8 +133,7 @@ sub enable_monitor()
 }
 
 
-sub undo_crippling()
-{
+sub undoCrippling {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',
@@ -155,8 +148,7 @@ sub undo_crippling()
 }
 
 
-sub force_refresh()
-{
+sub forceRefresh {
 	$| = 1;
 	my $sock = IO::Socket::INET->new(
 		PeerHost => '127.0.0.1',

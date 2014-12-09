@@ -29,7 +29,7 @@ use constant {
 };
 
 
-sub get_country_codes {
+sub getCountryCodes {
 	my %country_codes = (
 		'ad'	=> 'Andorra',
 		'ae'	=> 'United Arab Emirates',
@@ -285,7 +285,7 @@ sub get_country_codes {
 }
 
 
-sub get_country_list {
+sub getCountryList {
 	my $vpnlist  = ();
 	my $duallist = ();
 	my $torlist  = ();

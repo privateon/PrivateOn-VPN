@@ -30,7 +30,7 @@ use constant {
 };
 
 
-sub get_latest_server_list
+sub getLatestServerList
 {
 	if (CUSTOMIZE == 1) {
 		system("/usr/bin/mkdir -p " . TMP_PATH);
@@ -43,13 +43,13 @@ sub get_latest_server_list
 	system("/usr/bin/unzip " . TMP_PATH . "serverlist.zip -d " . TMP_PATH);
 	system("sync");
 
-	write_url_to_ini_file();
+	writeUrlToIniFile();
 
 	return 0;
 }
 
 
-sub add_one_connection
+sub addOneConnection
 {
 	my ($configfile, $kind, $ccode, $comment, $type, $username, $password) = @_;
 	my $return_code = 0;
@@ -171,8 +171,7 @@ sub add_one_connection
 
 
 ### helper functions
-
-sub write_url_to_ini_file
+sub writeUrlToIniFile
 {
 	my $url = "";
 	if (-e TMP_PATH . URL_FILE) {
@@ -234,7 +233,7 @@ sub write_url_to_ini_file
 
 sub getCountryList
 {
-	my $return_code = get_latest_server_list();
+	my $return_code = getLatestServerList();
 	return undef if ($return_code != 0);
 	opendir my $dir, TMP_PATH or return;
 	my @tmplist = readdir $dir;
@@ -244,7 +243,7 @@ sub getCountryList
 }
 
 
-sub add_connections 
+sub addConnections 
 {
 	my ($username, $password) = @_;
 	my $return_code = 0;
@@ -267,7 +266,7 @@ sub add_connections
 			my $comment = $3;
 			my $stype = $4;
 			print STDERR "Adding $file\n" if DEBUG > 0;
-			my $return_tmp = add_one_connection("/etc/openvpn/$file", $kind, $countrycode, $comment, $stype, $username, $password);
+			my $return_tmp = addOneConnection("/etc/openvpn/$file", $kind, $countrycode, $comment, $stype, $username, $password);
 			if ($return_tmp > $return_code) { 
 				$return_code = $return_tmp; 
 			}
