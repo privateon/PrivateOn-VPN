@@ -272,7 +272,7 @@ sub read_api_url_from_inifile
 	}
 	close $vpn_ini;
 	
-	if ( ! defined($url) ) {
+	if (not defined($url)) {
 		$ctx->log(error => "Unexpected error while reading " . INI_FILE . ".  Reason: " . $!);
 		$ctx->log(debug => "   Disabling API check.");
 		$check_api_url = 'none';
@@ -329,23 +329,6 @@ sub popup_dialog
 	    $ctx->log( warn => "system() return code $?, Error $!");
 	}
 	return;
-
-	# popup dialog to notify the user 
-	my $d = new UI::Dialog::Backend::KDialog ( backtitle => 'PrivateOn', title => 'VPN-monitor' );
-
-	if ($current_status == NET_UNPROTECTED and $previous_status == NET_PROTECTED) {
-		$d->msgbox( title => 'PrivateOn-VPN', text => 'VPN connection is down!' );
-		$ctx->log(debug => "Popup: VPN connection is down!" ) if DEBUG > 0;
-	} elsif ($current_status == NET_PROTECTED and $previous_status ==  NET_UNPROTECTED) {
-		$d->msgbox( title => 'PrivateOn-VPN', text => 'VPN connection is up!' );
-		$ctx->log(debug => "Popup: VPN connection is up!" ) if DEBUG > 0;
-	} elsif ($current_status == NET_BROKEN) {
-		$d->msgbox( title => 'PrivateOn-VPN', text => 'The network connection is broken!' );
-		$ctx->log(debug => "Popup: VPN connection is broken!" ) if DEBUG > 0;
-	} elsif ($current_status == NET_CRIPPLED) {
-		$d->msgbox( title => 'PrivateOn-VPN', text => 'The VPN could not be started.\nNetwork is now in safemode!' );
-		$ctx->log(debug => "Popup: VPN connection is safemode!" ) if DEBUG > 0;
-	}
 }
 
 
@@ -561,41 +544,43 @@ sub undo_crippling_on_error()
 	return 0;
 }
 
+
 sub check_crippled {
-    # Returns true if crippling is on
-    my $pslist = qx!/usr/bin/ps -aef!;
-    my @pslist = split("\n", $pslist);
-    my $line;
-    my $thttpd_pid  = undef;
-    my $dnsmasq_pid = undef;
-    while ( defined($line = shift(@pslist))) {
-	if ($line =~ /^[^\d]+\s*(\d+).*thttpd/) {
-	    $thttpd_pid = $1;
-	} elsif ($line =~ /^[^\d]+\s*(\d+).*dnsmasq/) {
-	    $dnsmasq_pid = $1;
+	# Returns true if crippling is on
+	my $pslist = qx!/usr/bin/ps -aef!;
+	my @pslist = split("\n", $pslist);
+	my $line;
+	my $thttpd_pid  = undef;
+	my $dnsmasq_pid = undef;
+	while ( defined($line = shift(@pslist))) {
+		if ($line =~ /^[^\d]+\s*(\d+).*thttpd/) {
+			$thttpd_pid = $1;
+		} elsif ($line =~ /^[^\d]+\s*(\d+).*dnsmasq/) {
+			$dnsmasq_pid = $1;
+		}
 	}
-    }
-    return $thttpd_pid  if (defined($thttpd_pid ));
-    return $dnsmasq_pid if (defined($dnsmasq_pid));
-    my $route = qx!/sbin/route -n!;
-    my @routelist = split("\n", $route);
-    while ( defined($line = shift(@routelist))) {
-	if ($line =~ /^0\.0\.0\.0/) {
-	    return "Default route";
+	return $thttpd_pid  if (defined($thttpd_pid ));
+	return $dnsmasq_pid if (defined($dnsmasq_pid));
+	my $route = qx!/sbin/route -n!;
+	my @routelist = split("\n", $route);
+	while ( defined($line = shift(@routelist))) {
+		if ($line =~ /^0\.0\.0\.0/) {
+			return "Default route";
+		}
 	}
-    }
-    my $nameservers = qx!/usr/bin/grep nameserver /etc/resolv.conf!;
-    my @nameservers = split("\n", $nameservers);
-    my @resolvers = ();
-    my $resolver;
-    while (defined($line = shift(@nameservers))) {
-	if ($line =~ /^nameserver\s*(\d+\.\d+\.\d+\.\d+)/) {
-	    $resolver = $1;
-	    push @resolvers, $resolver;
-	    return "Localhost as DNS" if $resolver eq '127.0.0.1';
+	my $nameservers = qx!/usr/bin/grep nameserver /etc/resolv.conf!;
+	my @nameservers = split("\n", $nameservers);
+	my @resolvers = ();
+	my $resolver;
+	while (defined($line = shift(@nameservers))) {
+		if ($line =~ /^nameserver\s*(\d+\.\d+\.\d+\.\d+)/) {
+			$resolver = $1;
+			push @resolvers, $resolver;
+			return "Localhost as DNS" if $resolver eq '127.0.0.1';
+		}
 	}
-    }
 }
+
 
 ################	     VPN Retry fork		################
 
@@ -715,9 +700,9 @@ sub run_once {
 		my $dfh;
 		# write dispatcher file with "up|vpn-down" case
 		unless (open $dfh, ">", DISPATCH_FILE) {
-		    $ctx->log(error => "Unable to open dispatch file for writing. Reason: " . $!);
-		    if (defined $ARGV[0]) { spawn_undo_crippling() };
-		    return -1;
+			$ctx->log(error => "Unable to open dispatch file for writing. Reason: " . $!);
+			if (defined $ARGV[0]) { spawn_undo_crippling() };
+			return -1;
 		}
 		print $dfh "#!/bin/sh\n";
 		print $dfh "ESSID=\"3b0b182a-1041-45be-ab76-23e30daafd32\"\n\n";
@@ -886,7 +871,7 @@ tcp_server(
 				$ctx->log(debug => "Dispatch file unlinked") if DEBUG > 0;
 			}
 			elsif ($buf eq "check-crippling") {
-			        $self->push_write(check_crippled());
+				$self->push_write(check_crippled());
 			}
 			elsif ($buf eq "undo-crippling") {
 				spawn_undo_crippling();
