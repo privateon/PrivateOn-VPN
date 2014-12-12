@@ -306,28 +306,54 @@ sub popup_dialog
 	my $current_status = shift;
 	my $msg;
 
-	$ctx->log(debug => "Should display popup right about now ($current_status vs $previous_status)");
+	$ctx->log(debug => "Should display popup right about now ($current_status vs $previous_status)") if DEBUG > 1;
 	if ($current_status == NET_UNPROTECTED) {
-	    $msg = 'VPN connection is DOWN';
+		$msg = 'VPN connection is DOWN';
 	} elsif ($current_status == NET_PROTECTED) {
-	    $msg = 'VPN connection is UP!';
+		$msg = 'VPN connection is UP!';
 	} elsif ($current_status == NET_BROKEN) {
-	    $msg = 'VPN connection is BROKEN';
+		$msg = 'VPN connection is BROKEN';
 	} elsif ($current_status == NET_CRIPPLED) {
-	    $msg = 'Unable to start VPN. Network put in safe mode';
+		$msg = 'Unable to start VPN. Network put in safe mode';
 	} else {
-	    $msg = 'Network is in an unknown status (' . $current_status . ')';
+		$msg = 'Network is in an unknown status (' . $current_status . ')';
 	}
-	
-	my $username = getpwuid(1000);
-	my @cmd=('kdialog', '--display', ':0', '--title', 'PrivateOn-VPN', '--passivepopup', "$msg", 120);
-	if (DEBUG && defined($ctx)) {
-	    $ctx->log(debug => '"' . join('", "', @cmd) . '"');
+	$ctx->log(debug => "Popup: " . $msg ) if DEBUG > 0;
+
+	# find user with terminal :0
+	my ($line, $username);
+	open(WHO, "who -s |");
+	while ($line = <WHO>) {
+		if ($line =~ /^(\S+)\s+:0\s+.*/) {
+			$username = $1;
+			last;
+		}
 	}
-	if (system(@cmd) != 0) {
-	    $ctx->log( warn => "Failed to display pop-up!" );
-	    $ctx->log( warn => "system() return code $?, Error $!");
+	# if who parse fails, use username with ID 1000
+	if (not defined($username)) {
+		$username = getpwuid(1000);
+		$ctx->log(debug => "Who parse failed. using user ($username) ID 1000." ) if DEBUG > 0;
 	}
+
+	# check is xhost already allows non-network local connections 
+	my $remove_access = 0;
+	if (system("su -l " . $username . " -c \"DISPLAY=:0 xhost \" | grep -i LOCAL 1>/dev/null")) {
+		# add non-network local connections to X display access control list
+		system("su -l " . $username . " -c \"DISPLAY=:0 xhost +local:\" 1>/dev/null");
+		$remove_access = 1;
+		$ctx->log(debug => "Non-network local connections added to X display access control list" ) if DEBUG > 0;
+	}
+
+	my $cmd=("kdialog --display :0 --title \"PrivateOn-VPN\" --passivepopup \"" . $msg . "\" 120 &");
+	$ctx->log(debug => '<' . $cmd . '>') if DEBUG > 1;
+	system($cmd);
+
+	# undo xhost exception
+	if ($remove_access) {
+		system("su -l " . $username . " -c \"DISPLAY=:0 xhost -local:\" 1>/dev/null");
+		$ctx->log(debug => "Non-network local connections removed from X display access control list" ) if DEBUG > 0;
+	}
+
 	return;
 }
 
