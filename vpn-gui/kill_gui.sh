@@ -18,18 +18,18 @@
 
 DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
-# Only root should use
+# Only root should use this script
 if test "$(id -u)" -ne 0; then
 	echo "${0##*/}: only root can use ${0##*/}" 1>&2
 	exit 1
 fi
 
-# run kill multiple times because "sudo vpn_gui.sh" produces 2 processes
-while true; do
-	PID=`ps aux | grep $DAEMON | grep -v grep | awk 'NR<2 {print $2}'`
-	if [ ! -z "$PID" ]; then
-		/usr/bin/kill -9 $PID
-	else
-		break
-	fi
+# Run kill on list because "sudo vpn_gui.sh" produces 2 processes
+for PID in $(pgrep -f $DAEMON); do
+	# First ask system politely to close previous instances
+	kill -TERM $PID >/dev/null 2>&1
+done
+for PID in $(pgrep -f $DAEMON); do
+	# If that didn't help, be assertive
+	kill -9 $PID >/dev/null 2>&1
 done
