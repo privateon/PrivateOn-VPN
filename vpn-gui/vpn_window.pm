@@ -81,7 +81,7 @@ sub NEW {
 
 	my $title = Qt::Label(this->tr('VPN default selection'));
 	my $image = Qt::Label();
-	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/logo.png')->scaled(Qt::Size(260,130)));
+	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
 
 	my $status = Qt::TextEdit();
 	my $status_text;
