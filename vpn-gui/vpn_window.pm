@@ -87,7 +87,6 @@ sub NEW {
 	my $status_text;
 	my $api_status = getApiStatus();
 	$status->setReadOnly(1);
-
 	$status->setMaximumHeight(60);
 	this->{statusOutput} = $status;
 
@@ -155,7 +154,7 @@ sub NEW {
 		this->{turnoffButton}->setEnabled(0);
 	}
 	this->{refreshButton} = Qt::PushButton(this->tr('Refresh'));
-	this->{userpassButton} = Qt::PushButton(this->tr('S/U Pass')); # Update server list and user/password
+	this->{userpassButton} = Qt::PushButton(this->tr('Servers')); # Update server list and user/password
 
 	this->{turnoffButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
 	this->{userpassButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
@@ -443,29 +442,38 @@ sub setUserInfo {
 	my $status_text;
 
 	if ($userInfo{code} == 1) {
-		$status_text = "Note: There is no any connection in your system\n";
+		$status_text = "Note: There are no VPN connection installed.\n";
 		setStatusText($status_text);
 		$userInfo{username} = "";
 		$userInfo{password} = "";
 	} elsif ($userInfo{code} == 2) {
-		$status_text = "Note: Can not open your connection file\n";
+		$status_text = "Note: Can not open your VPN connection files.\n";
 		setStatusText($status_text);
+		this->{userpassButton}->setEnabled(1);
 		return $userInfo{code};
 	}
 	my ($ok, $password);
-	my $username = Qt::InputDialog::getText(this, this->tr('Input'),
-	this->tr('User name:'), Qt::LineEdit::Normal(),
-	$userInfo{username}, $ok);
+	my $username = Qt::InputDialog::getText(this, this->tr('Credentials'),
+	   this->tr('VPN Username:'), Qt::LineEdit::Normal(), $userInfo{username}, $ok);
 	if ($ok && $username) {
 		this->{username} = $username;
-		$password = Qt::InputDialog::getText(this, this->tr('Input'),
-		this->tr('Password:'), Qt::LineEdit::Password(),
+		$password = Qt::InputDialog::getText(this, this->tr('Credentials'),
+		this->tr('VPN Password:'), Qt::LineEdit::Password(),
 		$userInfo{password}, $ok);
 		if ($ok && $password) {
 			this->{password} = $password;
 		}
 	}
 
+	unless ($ok) {
+		$status_text .= "Credentials entry aborted.\n";
+		$status_text .= "Click Setup to change VPN credentials ";
+		$status_text .= "and retrieve latest server list.";
+		setStatusText($status_text);
+		this->{userpassButton}->setEnabled(1);
+		return 1;
+	}
+	
 	my $ac_rc; # addConnections() return code
 	if ($ok) {
 		$ac_rc = addConnections($username, $password);
@@ -493,6 +501,7 @@ sub setUserInfo {
 		}
 		$status_text = "Note: Can not create all connections for you\n";
 		setStatusText($status_text);
+		this->{userpassButton}->setEnabled(1);
 		return $userInfo{code};
 		}
 	}
@@ -506,6 +515,9 @@ sub setUserInfo {
 
 	$status_text = "Successful to set the Username and password!\n";
 	setStatusText($status_text);
+
+	this->{userpassButton}->setEnabled(1);
+	return 0;
 }
 
 sub getUserInfo {
@@ -697,7 +709,7 @@ sub updateDefaultVpnResume {
 	my $return_code = setDefaultVpn($configfile, $ccode, $comment, $stype, $vpntype);
 	if ($return_code == 1) {
 		$status_text = "There are no VPN connections!\n";
-		$status_text .="Please click 'S/U Pass'\n"; 
+		$status_text .="Please click 'Servers'\n"; 
 		$status_text .="to set your username/password\n"; 
 		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
