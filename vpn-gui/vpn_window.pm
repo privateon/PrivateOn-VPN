@@ -11,6 +11,7 @@ package vpn_window;
 
 use strict;
 use warnings;
+no warnings 'experimental::smartmatch';
 use feature 'state';
 use Socket;
 use QtCore4;
@@ -26,7 +27,6 @@ use QtCore4::slots
 	updateDefaultVpnResume => [],
 	turnOffVpn => [],
 	updateStatus => [];
-use Data::Dumper;
 use File::Basename;
 use File::Copy qw(copy);
 use File::Path qw(make_path);
@@ -36,6 +36,8 @@ use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections);
 use vpn_status qw(getApiStatus getNetStatus takeABreak removeDispatcher disableMonitor undoCrippling forceRefresh enableMonitor getCripplingStatus);
+#use QtCore4::debug qw(ambiguous);
+#use Data::Dumper;
 
 use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
@@ -79,7 +81,24 @@ sub NEW {
 	this->{resumeTimer} = Qt::Timer(this);
 	this->connect(this->{resumeTimer}, SIGNAL('timeout()'), SLOT('updateDefaultVpnResume()'));
 
-	my $title = Qt::Label(this->tr('VPN default selection'));
+	# initialize main widget and make it transparent
+	my $centralWidget = Qt::Widget();
+	setWindowFlags( Qt::Tool() | Qt::FramelessWindowHint() );
+	setAttribute( Qt::WA_TranslucentBackground() );
+
+	# get system default background color
+	# note: in QT4 palette Constant QPalette::Midlight = value 3
+	my $systemBackgroundColor = $centralWidget->style->standardPalette->color(3)->name;
+	if (not defined $systemBackgroundColor) {
+		# use opensuse 13.2 default if background color detection failed
+		$systemBackgroundColor = "#e9e7e3";
+	}
+	print "\nsystemBackgroundColor = ".$systemBackgroundColor."\n" if DEBUG > 1;
+
+	my $frameLayout = Qt::Frame( this, 0);
+	$frameLayout->setGeometry( Qt::Rect( 0, 0, 280, 240 ) );
+	$frameLayout->setStyleSheet("QFrame{background-color: " . $systemBackgroundColor . "; border-radius: 5px}");
+
 	my $image = Qt::Label();
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
 
@@ -87,11 +106,9 @@ sub NEW {
 	my $status_text;
 	my $api_status = getApiStatus();
 	$status->setReadOnly(1);
-	$status->setMaximumHeight(60);
+	$status->setMinimumHeight(75);
+	$status->setMaximumHeight(75);
 	this->{statusOutput} = $status;
-
-	my $centralWidget = Qt::Widget();
-	setWindowFlags( Qt::Tool() | Qt::FramelessWindowHint() );
 
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
 	this->{serverCountryCombo} = Qt::ComboBox();
@@ -166,21 +183,22 @@ sub NEW {
 	this->connect(this->{serverCountryCombo}, SIGNAL 'activated(int)', this, SLOT 'setCountry(int)');
 	this->connect($serverTypeCombo, SIGNAL 'activated(int)', this, SLOT 'setServerType(int)');
 	
-	my $verticalLayout = Qt::VBoxLayout();
-	$verticalLayout->setContentsMargins(11, 11, 11, 11);
 	my $titleLayout = Qt::HBoxLayout();
-#	$titleLayout->addSpacing(40);
 	$titleLayout->addWidget($image);
 	$titleLayout->addStretch(1);
 	my $statusLayout = Qt::HBoxLayout();
 	$statusLayout->addWidget($status);
 	$statusLayout->addStretch(1);
-
+	my $spacerLayout = Qt::HBoxLayout();
+	my $spacer = Qt::SpacerItem(0, 20);
+	$spacerLayout->addItem($spacer);
 	my $vpnInfoLayout = Qt::HBoxLayout();
+	$vpnInfoLayout->addSpacing(3);
 	$vpnInfoLayout->addWidget($serverCountryLabel);
 	$vpnInfoLayout->addWidget(this->{serverCountryCombo}, 1);
 	$vpnInfoLayout->addStretch(1);
 	my $vpnTypeLayout = Qt::HBoxLayout();
+	$vpnTypeLayout->addSpacing(3);
 	$vpnTypeLayout->addWidget($serverTypeLabel);
 	$vpnTypeLayout->addSpacing(20);
 	$vpnTypeLayout->addWidget($serverTypeCombo, 1);
@@ -193,11 +211,13 @@ sub NEW {
 	$buttonLayout->addWidget(this->{userpassButton});
 	$buttonLayout->addStretch(1);
 	
+	my $verticalLayout = Qt::VBoxLayout( $frameLayout );
+	$verticalLayout->setContentsMargins(11, 11, 11, 6);
 	$verticalLayout->addLayout($titleLayout);
 	$verticalLayout->addLayout($statusLayout);
+	$verticalLayout->addLayout($spacerLayout);
 	$verticalLayout->addLayout($vpnInfoLayout);
 	$verticalLayout->addLayout($vpnTypeLayout);
-	#$verticalLayout->addLayout($userinfoLayout);
 	$verticalLayout->addLayout($buttonLayout);
 	$centralWidget->setLayout($verticalLayout);
 	this->setMinimumSize(Qt::Size(280, 240));
