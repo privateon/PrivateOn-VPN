@@ -252,12 +252,6 @@ sub get_previous_status_from_file
 }
 
 
-sub read_dispatcher
-{
-	# to be added
-}
-
-
 sub write_dispatcher 
 {
 	my $uuid;
@@ -274,6 +268,7 @@ sub write_dispatcher
 	}
 	close $vpn_ini;
 
+	# write dispatcher file with "up|vpn-down" case
 	my $dfh;
 	unless (open $dfh, ">", DISPATCH_FILE) {
 		$ctx->log(error => "Could not open " . DISPATCH_FILE . " for writing.  Reason: " . $!);
@@ -766,23 +761,6 @@ sub run_once {
 	pf_set( PID_FILE );
 
 	if ( !-e STATUS_FILE) {
-		my $dfh;
-		# write dispatcher file with "up|vpn-down" case
-		unless (open $dfh, ">", DISPATCH_FILE) {
-			$ctx->log(error => "Unable to open dispatch file for writing. Reason: " . $!);
-			if (defined $ARGV[0]) { spawn_undo_crippling() };
-			return -1;
-		}
-		print $dfh "#!/bin/sh\n";
-		print $dfh "ESSID=\"3b0b182a-1041-45be-ab76-23e30daafd32\"\n\n";
-		print $dfh "interface=\$1 status=\$2\n";
-		print $dfh "case \$status in\n";
-		print $dfh "  up|vpn-down)\n";
-		print $dfh "	sleep 3 && /usr/bin/nmcli con up uuid \"\$ESSID\" &\n";
-		print $dfh "	;;\n";
-		print $dfh "esac\n";
-		close $dfh;
-
 		my $vpn_ini;
 		unless (open $vpn_ini, "<" . INI_FILE) {
 			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
@@ -810,6 +788,9 @@ sub run_once {
 			print VPN_INI "monitor=enabled\n";
 		}
 		close VPN_INI;
+
+		# write uuid from INI file to dispatcher file
+		write_dispatcher();
 
 	} else { # status file exists
 		# assign variable from file
