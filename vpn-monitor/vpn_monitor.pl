@@ -252,6 +252,48 @@ sub get_previous_status_from_file
 }
 
 
+sub read_dispatcher
+{
+	# to be added
+}
+
+
+sub write_dispatcher 
+{
+	my $uuid;
+	my $vpn_ini;
+	unless (open $vpn_ini, "<" . INI_FILE) {
+		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+		return 1;
+	}
+	while (<$vpn_ini>) {
+		if (/uuid=(.+)/) {
+			$uuid = $1;
+			last;
+		}
+	}
+	close $vpn_ini;
+
+	my $dfh;
+	unless (open $dfh, ">", DISPATCH_FILE) {
+		$ctx->log(error => "Could not open " . DISPATCH_FILE . " for writing.  Reason: " . $!);
+		return 2;
+	}
+	print $dfh "#!/bin/sh\n";
+	print $dfh "ESSID=\"$uuid\"\n\n";
+	print $dfh "interface=\$1 status=\$2\n";
+	print $dfh "case \$status in\n";
+	print $dfh "  up|vpn-down)\n";
+	print $dfh "	sleep 3 && /usr/bin/nmcli con up uuid \"\$ESSID\" &\n";
+	print $dfh "	;;\n";
+	print $dfh "esac\n";
+	close $dfh;
+	$ctx->log(debug => "Dispatch file written") if DEBUG > 0;
+
+	return 0;
+}
+
+
 sub read_api_url_from_inifile
 {
 	my $vpn_ini;
@@ -833,6 +875,7 @@ tcp_server(
 			if ($buf eq "force-refresh") {
 				refresh();
 				$self->push_write("refresh ok\n");
+
 			} elsif ($buf eq "take-a-break") {
 				$Temporary_Disable = 1; # disable crippling
 
@@ -850,51 +893,32 @@ tcp_server(
 				);
 				$self->push_write("monitoring disabled for 1 minute\n");
 				$ctx->log(debug => "Take-a-break requested, Temporary disable_crippling") if DEBUG > 0;
+
 			} elsif ($buf eq "get-api-status") {
 				$self->push_write(get_api_status() . "\n");
+
 			} elsif ($buf eq "get-net-status") {
 				$self->push_write(quick_net_status() . "\n");
+
 			} elsif ($buf eq "write-dispatcher") {
-				my $uuid;
-				my $vpn_ini;
-				unless (open $vpn_ini, "<" . INI_FILE) {
+				if (write_dispatcher() == 0) {
+					$self->push_write("ok - dispatch file written\n");
+				} else {
 					$self->push_write("not ok - see error log\n");
-					$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-					return;
 				}
-				while (<$vpn_ini>) {
-				if (/uuid=(.+)/) {
-					$uuid = $1;
-					last;
-				}
-				}
-				close $vpn_ini;
-				my $dfh;
-				unless (open $dfh, ">", DISPATCH_FILE) {
-					$self->push_write("not ok - see error log\n");
-					$ctx->log(error => "Could not open " . DISPATCH_FILE . " for writing.  Reason: " . $!);
-					return;
-				}
-				print $dfh "#!/bin/sh\n";
-				print $dfh "ESSID=\"$uuid\"\n\n";
-				print $dfh "interface=\$1 status=\$2\n";
-				print $dfh "case \$status in\n";
-				print $dfh "  up|vpn-down)\n";
-				print $dfh "	sleep 3 && /usr/bin/nmcli con up uuid \"\$ESSID\" &\n";
-				print $dfh "	;;\n";
-				print $dfh "esac\n";
-				close $dfh;
-				$self->push_write("ok - dispatch file written\n");
-				$ctx->log(debug => "Dispatch file written") if DEBUG > 0;
+
 			} elsif ($buf eq "remove-dispatcher") {
 				unlink(DISPATCH_FILE);
 				$self->push_write("ok - dispatch file unlinked\n");
 				$ctx->log(debug => "Dispatch file unlinked") if DEBUG > 0;
+
 			} elsif ($buf eq "check-crippling") {
 				$self->push_write(check_crippled());
+
 			} elsif ($buf eq "undo-crippling") {
 				spawn_undo_crippling();
 				$self->push_write("ok - called spawn_undo_crippling()\n");
+
 			} elsif ($buf eq "enable-monitor") {
 				# enable check
 				$Temporary_Disable = 0;
@@ -941,6 +965,7 @@ tcp_server(
 				$Monitor_Enabled = 1;
 				$self->push_write("ok - monitor enabled\n");
 				$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
+
 			} elsif ($buf eq "disable-monitor") {
 				$Temporary_Disable = 1;
 				$Monitor_Enabled = 0;
@@ -979,6 +1004,7 @@ tcp_server(
 				close VPN_INI;
 				$self->push_write("ok - monitor disabled\n");
 				$ctx->log(debug => "Monitor disabled") if DEBUG > 0;
+
 			} else {
 				$self->push_write("say what?\n");
 				$ctx->log(debug => "Unrecognized command: " . $buf) if DEBUG > 0;
