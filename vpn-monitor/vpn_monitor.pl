@@ -41,8 +41,6 @@ use AnyEvent::Log;
 use AnyEvent::Fork;
 use AnyEvent::Fork::RPC;
 
-use Data::Dumper;
-
 use constant {
 	PATH          => "/opt/PrivateOn-VPN/",
 	STATUS_FILE   => "/var/run/PrivateOn/.status",
@@ -69,13 +67,16 @@ use constant {
 	IPC_PORT	=> 44244
 };
 
-my $ctx; # global AE logging context object
-my $monitor_enabled; # monitor state (set in run_once())
-my $disable_crippling = 0; # used to temporarily disable crippling
-my $previous_status = 999; # used to store status result of previous iteration
-my $check_api_url; # URL for checking VPN-provider's VPN status API (set in run_once())
 
-my $cv = AE::cv;
+################	  Package-Wide Globals		################
+
+my $Monitor_Enabled;            # monitor state (set in run_once())
+my $Temporary_Disable = 0;      # used to temporarily disable crippling
+my $Previous_Status = 999;      # used to store status result of previous iteration
+my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API (set in run_once())
+
+my $cv = AE::cv;                # Event loop object
+my $ctx;                        # global AE logging context object
 
 
 ################	Network State subroutines	################
@@ -104,10 +105,10 @@ sub get_api_status
 	}
 
 	my $reply;
-	if ( $check_api_url ne 'none') {
+	if ( $Url_For_Api_Check ne 'none') {
 		try {
 			my $json;
-			if ( $json = http_req($check_api_url) ) {
+			if ( $json = http_req($Url_For_Api_Check) ) {
 				return NET_CRIPPLED if $json =~ /<meta name="flag" content="1"\/>/g;
 				$reply = decode_json($json);
 			}
@@ -257,7 +258,7 @@ sub read_api_url_from_inifile
 	unless (open $vpn_ini, "<" . INI_FILE) {
 		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
 		$ctx->log(debug => "   Disabling API check.");
-		$check_api_url = 'none';
+		$Url_For_Api_Check = 'none';
 		return 2;
 	}
 
@@ -275,26 +276,26 @@ sub read_api_url_from_inifile
 	if (not defined($url)) {
 		$ctx->log(error => "Unexpected error while reading " . INI_FILE . ".  Reason: " . $!);
 		$ctx->log(debug => "   Disabling API check.");
-		$check_api_url = 'none';
+		$Url_For_Api_Check = 'none';
 		return 2;
 	} elsif ($url eq 'none') {
 		$ctx->log(debug => "No URL entry found in " . INI_FILE) if DEBUG > 0;
 		$ctx->log(debug => "   Disabling API check.") if DEBUG > 0;
-		$check_api_url = 'none';
+		$Url_For_Api_Check = 'none';
 		return 1;
 	} elsif ($url eq '') {
 		$ctx->log(debug => "URL entry empty in " . INI_FILE) if DEBUG > 0;
 		$ctx->log(debug => "   Disabling API check.") if DEBUG > 0;
-		$check_api_url = 'none';
+		$Url_For_Api_Check = 'none';
 		return 1;
 	} elsif ($url =~ /http\:.*/) {
 		$ctx->log(debug => "Using API check URL  $url") if DEBUG > 0;
-		$check_api_url = $url;
+		$Url_For_Api_Check = $url;
 		return 0;
 	} else {
 		$ctx->log(error => "Error addind API check URL $url");
 		$ctx->log(error => "   URL must start with \"http:\"   Disabling API check.");
-		$check_api_url = 'none';
+		$Url_For_Api_Check = 'none';
 		return 2;
 	}
 	return 2;
@@ -306,7 +307,7 @@ sub popup_dialog
 	my $current_status = shift;
 	my $msg;
 
-	$ctx->log(debug => "Should display popup right about now ($current_status vs $previous_status)") if DEBUG > 1;
+	$ctx->log(debug => "Should display popup right about now ($current_status vs $Previous_Status)") if DEBUG > 1;
 	if ($current_status == NET_UNPROTECTED) {
 		$msg = 'VPN connection is DOWN';
 	} elsif ($current_status == NET_PROTECTED) {
@@ -671,7 +672,7 @@ sub retry_vpn_on_error()
 ################     Detect Change in Network State	################
 
 sub refresh {
-	if ( not defined($monitor_enabled) or $monitor_enabled == 0 or $disable_crippling == 1) {
+	if ( not defined($Monitor_Enabled) or $Monitor_Enabled == 0 or $Temporary_Disable == 1) {
 		return;
 	}
 
@@ -679,10 +680,10 @@ sub refresh {
 
 	my $current_status = get_api_status();
 	log_net_status($current_status) if DEBUG > 0;
-	$ctx->log(debug => "\tprevious_status = " . get_status_text($previous_status) . " current_status = " . get_status_text($current_status) ) if DEBUG > 1;
+	$ctx->log(debug => "\tprevious_status = " . get_status_text($Previous_Status) . " current_status = " . get_status_text($current_status) ) if DEBUG > 1;
 
-	my $tmp_previous = $previous_status;
-	$previous_status = $current_status;
+	my $tmp_previous = $Previous_Status;
+	$Previous_Status = $current_status;
 
 	# do not retry/redirect if previous state was CRIPPLED, redirect on next iteration
 	if ($current_status == NET_UNPROTECTED and $tmp_previous != NET_CRIPPLED) {
@@ -770,7 +771,7 @@ sub run_once {
 
 	} else { # status file exists
 		# assign variable from file
-		$previous_status = get_previous_status_from_file();
+		$Previous_Status = get_previous_status_from_file();
 
 		my $vpn_ini;
 		unless (open $vpn_ini, "<" . INI_FILE) {
@@ -781,10 +782,9 @@ sub run_once {
 		while (<$vpn_ini>) {
 			if (/monitor=([a-zA-Z]+)/) {
 				if ($1 =~ /disabled/) {
-					$monitor_enabled = 0;
-				}
-				else { # any value other than "disabled" is "enabled"
-					$monitor_enabled = 1;
+					$Monitor_Enabled = 0;
+				} else { # any value other than "disabled" is "enabled"
+					$Monitor_Enabled = 1;
 				}
 			}
 		}
@@ -828,14 +828,13 @@ tcp_server(
 			chomp($buf);
 			$self->rbuf = ""; # clear buffer
 
-#print "Received: " . $buf . "\n";
+			print "Received: " . $buf . "\n" if DEBUG > 2;
 
 			if ($buf eq "force-refresh") {
 				refresh();
 				$self->push_write("refresh ok\n");
-			}
-			elsif ($buf eq "take-a-break") {
-				$disable_crippling = 1; # disable crippling
+			} elsif ($buf eq "take-a-break") {
+				$Temporary_Disable = 1; # disable crippling
 
 				# kill vpn_retry instance if running
 				system("/bin/pkill -9 vpn_retry");
@@ -845,20 +844,17 @@ tcp_server(
 				$timer2 = AnyEvent->timer(
 					after => 60, 
 					cb => sub {
-						$disable_crippling = 0;
+						$Temporary_Disable = 0;
 						$ctx->log(debug => "Temporary disable_crippling ended") if DEBUG > 0;
 					},
 				);
 				$self->push_write("monitoring disabled for 1 minute\n");
 				$ctx->log(debug => "Take-a-break requested, Temporary disable_crippling") if DEBUG > 0;
-			}
-			elsif ($buf eq "get-api-status") {
+			} elsif ($buf eq "get-api-status") {
 				$self->push_write(get_api_status() . "\n");
-			}
-			elsif ($buf eq "get-net-status") {
+			} elsif ($buf eq "get-net-status") {
 				$self->push_write(quick_net_status() . "\n");
-			}
-			elsif ($buf eq "write-dispatcher") {
+			} elsif ($buf eq "write-dispatcher") {
 				my $uuid;
 				my $vpn_ini;
 				unless (open $vpn_ini, "<" . INI_FILE) {
@@ -890,22 +886,18 @@ tcp_server(
 				close $dfh;
 				$self->push_write("ok - dispatch file written\n");
 				$ctx->log(debug => "Dispatch file written") if DEBUG > 0;
-			}
-			elsif ($buf eq "remove-dispatcher") {
+			} elsif ($buf eq "remove-dispatcher") {
 				unlink(DISPATCH_FILE);
 				$self->push_write("ok - dispatch file unlinked\n");
 				$ctx->log(debug => "Dispatch file unlinked") if DEBUG > 0;
-			}
-			elsif ($buf eq "check-crippling") {
+			} elsif ($buf eq "check-crippling") {
 				$self->push_write(check_crippled());
-			}
-			elsif ($buf eq "undo-crippling") {
+			} elsif ($buf eq "undo-crippling") {
 				spawn_undo_crippling();
 				$self->push_write("ok - called spawn_undo_crippling()\n");
-			}
-			elsif ($buf eq "enable-monitor") {
+			} elsif ($buf eq "enable-monitor") {
 				# enable check
-				$disable_crippling = 0;
+				$Temporary_Disable = 0;
 
 				# kill vpn_retry instance if running
 				system("/bin/pkill -9 vpn_retry");
@@ -946,13 +938,12 @@ tcp_server(
 					interval => 60, # every minute
 					cb => \&refresh,
 				);
-				$monitor_enabled = 1;
+				$Monitor_Enabled = 1;
 				$self->push_write("ok - monitor enabled\n");
 				$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
-			} 
-			elsif ($buf eq "disable-monitor") {
-				$disable_crippling = 1;
-				$monitor_enabled = 0;
+			} elsif ($buf eq "disable-monitor") {
+				$Temporary_Disable = 1;
+				$Monitor_Enabled = 0;
 
 				# kill vpn_retry instance if running
 				system("/bin/pkill -9 vpn_retry");
@@ -988,8 +979,7 @@ tcp_server(
 				close VPN_INI;
 				$self->push_write("ok - monitor disabled\n");
 				$ctx->log(debug => "Monitor disabled") if DEBUG > 0;
-			}
-			else {
+			} else {
 				$self->push_write("say what?\n");
 				$ctx->log(debug => "Unrecognized command: " . $buf) if DEBUG > 0;
 			}
