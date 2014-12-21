@@ -35,7 +35,7 @@ use Net::DBus qw(:typing);
 use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections);
-use vpn_status qw(getApiStatus getNetStatus takeABreak removeDispatcher disableMonitor undoCrippling forceRefresh enableMonitor getCripplingStatus);
+use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState takeABreak removeDispatcher disableMonitor enableMonitor undoCrippling forceRefresh);
 #use QtCore4::debug qw(ambiguous);
 #use Data::Dumper;
 
@@ -956,8 +956,8 @@ sub updateStatus {
 		}
 	}
 
-	my $current_status = getNetStatus() || -3;
-	my $tmp_previous = $previous_status || -4;
+	my $current_status = getNetStatus();
+	my $tmp_previous = $previous_status;
 	$previous_status = $current_status;
 
 	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {

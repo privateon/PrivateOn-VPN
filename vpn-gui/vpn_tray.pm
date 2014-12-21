@@ -12,10 +12,10 @@ package vpn_tray;
 use strict;
 #use warnings;
 use vpn_window;
-use vpn_status qw(get_net_status);
+use vpn_ipc qw(get_net_status getMonitorState);
 use QtCore4;
 use QtGui4;
-use QtCore4::isa qw( Qt::Dialog );
+use QtCore4::isa qw(Qt::Dialog);
 use QtCore4::slots
     setIcon => [],
     showMessage => [],
