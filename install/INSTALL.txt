@@ -57,7 +57,7 @@ cpan install IO::Pty::Easy
 ### Step 6a or 6b. 	Install service manifests
 
 ## 6a 	for sysV init.d systems
-cp -p /opt/PrivateOn-VPN/init.d/vpn-monitor /etc/init.d/vpn-monitor
+cp -p /opt/PrivateOn-VPN/install/init.d/vpn-monitor /etc/init.d/vpn-monitor
 ln -s /etc/init.d/vpn-monitor /usr/sbin/rcvpnmonitor
 service vpn-monitor status
 
