@@ -601,7 +601,7 @@ sub updateDefaultVpn {
 
 	my $status_text;
 
-	undoCrippling() if (getCripplingStatus());
+	undoCrippling() if (getCripplingStatus(DEBUG));
 
 	my $api_status = getApiStatus();
 	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
@@ -854,7 +854,7 @@ sub turnOffVpn {
 	removeDispatcher();
 	disableMonitor();
 
-	if (getApiStatus() == NET_CRIPPLED || getCripplingStatus()) {
+	if (getApiStatus() == NET_CRIPPLED || getCripplingStatus(DEBUG)) {
 		undoCrippling();
 		$status_text = "The VPN connection is deactivated.\n";
 		setStatusText($status_text);

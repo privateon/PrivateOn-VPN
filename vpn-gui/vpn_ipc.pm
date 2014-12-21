@@ -75,15 +75,9 @@ sub sendBackendQuery {
 	$sock->send( $command . "\n" );
 	shutdown($sock, 1);
 	my $response = "";
-	$sock->recv($response, 4);
+	$sock->recv($response, 40);
 	$sock->close();
 	chomp($response);
-
-	# was response "say what?" for wrong command
-	if ($response =~ /say/i) {
-		print "Error: backend did not understand Command \"$command\" \n";
-		return NET_UNKNOWN;
-	}
 	return $response;
 }
 
@@ -118,19 +112,65 @@ sub forceRefresh {
 ################            Backend Queries             ################
 
 sub getApiStatus {
-	return sendBackendQuery("get-api-status");
+	my $response = sendBackendQuery("get-api-status");
+
+	# was response "say what?" for wrong command
+	if ($response =~ /say/i) {
+		print "Error: backend did not understand query \"get-api-status\" \n";
+		return NET_UNKNOWN;
+	}
+	# if not numeric
+	unless ($response =~ /^\d+$/ ) {
+		print "Error: backend query \"get-api-status\" gave non-numeric response \"$response\" \n";
+		return NET_UNKNOWN;
+	} 
+	return $response;
 }
+
 
 sub getNetStatus {
-	return sendBackendQuery("get-net-status");
+	my $response = sendBackendQuery("get-net-status");
+
+	# was response "say what?" for wrong command
+	if ($response =~ /say/i) {
+		print "Error: backend did not understand query \"get-net-status\" \n";
+		return NET_UNKNOWN;
+	}
+	# if not numeric
+	unless ($response =~ /^\d+$/ ) {
+		print "Error: backend query \"get-net-status\" gave non-numeric response \"$response\" \n";
+		return NET_UNKNOWN;
+	} 
+	return $response;
 }
+
 
 sub getCripplingStatus {
-	return sendBackendQuery("check-crippling");
+	my $debug_flag = shift;
+
+	my $response = sendBackendQuery("check-crippling");
+	if ($response) {
+		if ( defined($debug_flag) && $debug_flag > 0 ) {
+ 			print "Debug: check-crippling returned test result \"$response\" \n";
+		}
+		return 1;
+	}
+	return 0;
 }
 
+
 sub getMonitorState {
-	return sendBackendQuery("monitor-state");
+	my $debug_flag = shift;
+
+	my $response = sendBackendQuery("monitor-state");
+	unless ($response =~ /\S+-\S+-\S+/) {
+		if ( defined($debug_flag) && $debug_flag > 0 ) {
+ 			print "Error: monitor-state returned invalid result \"$response\" \n";
+		}
+		# assume disabled and unknown
+		$response = "Disabled-unknown-UNKNOWN";
+	}
+	return $response;
 }
 
 
