@@ -73,7 +73,9 @@ use constant {
 my $Monitor_Enabled;            # monitor state (set in run_once())
 my $Temporary_Disable = 0;      # used to temporarily disable crippling
 my $Current_Task = "idle";      # stores the current forked task, idle if no task
-my $Previous_Status = 999;      # used to store status result of previous iteration
+my $Current_Status = 999;       # used to cache network status for get_monitor_state responses
+my $Current_Update_Time = 0;    # used to store epoch time of last network status update for cache aging
+my $Previous_Status = 999;      # used to store status result of previous iteration for detecting change 
 my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API (set in run_once())
 
 my $cv = AE::cv;                # Event loop object
@@ -131,7 +133,7 @@ sub get_api_status
 
 
 
-sub quick_net_status()
+sub quick_net_status
 {
 	my $net_status = NET_UNKNOWN;
 
@@ -188,6 +190,37 @@ sub quick_net_status()
 		return NET_UNPROTECTED if ($line[0] =~ /^up/);
 	}
 	return $net_status;
+}
+
+
+sub get_monitor_state
+{
+	my $output;
+
+	# monitor part values = Enabled/Disabled
+	if ($Monitor_Enabled) {
+		$output = "Enabled-";
+	} else {
+		$output = "Disabled-";
+	}
+
+	# task part values = crippled/uncrippling/retrying/temporary/idle
+	if ($Temporary_Disable) {
+		$output = "Disabled-temporary";
+	} else {
+		$output .= $Current_Task;
+	}
+
+	# refresh network status if cached data is over 20 seconds old
+	if ( time() - $Current_Update_Time > 20 ) {
+		$Current_Status = quick_net_status();
+		$Current_Update_Time = time();
+	}
+
+	# network part values = UNPROTECTED/PROTECTED/BROKEN/CRIPPLED/ERROR/UNKNOWN
+	$output .= "-" . get_status_text($Current_Status);
+
+	return $output
 }
 
 
@@ -250,6 +283,18 @@ sub get_previous_status_from_file
 	my @lines = <$sf>;
 	close $sf;
 	return $lines[0];
+}
+
+
+sub set_current_task_to_idle
+{
+	# restore task to "temporary" if take-a-break/timer2 still running
+	if ($Temporary_Disable) {
+		$Current_Task = "temporary";
+	} else {
+		$Current_Task = "idle";
+	}
+	return;
 }
 
 
@@ -342,56 +387,60 @@ sub read_api_url_from_inifile
 
 sub popup_dialog
 {
-	my $current_status = shift;
+	my $status_to_display = shift;
 	my $msg;
 
-	$ctx->log(debug => "Should display popup right about now ($current_status vs $Previous_Status)") if DEBUG > 1;
-	if ($current_status == NET_UNPROTECTED) {
+	$ctx->log(debug => "Should display popup right about now ($status_to_display vs $Previous_Status)") if DEBUG > 1;
+	if ($status_to_display == NET_UNPROTECTED) {
 		$msg = 'VPN connection is DOWN';
-	} elsif ($current_status == NET_PROTECTED) {
+	} elsif ($status_to_display == NET_PROTECTED) {
 		$msg = 'VPN connection is UP!';
-	} elsif ($current_status == NET_BROKEN) {
+	} elsif ($status_to_display == NET_BROKEN) {
 		$msg = 'VPN connection is BROKEN';
-	} elsif ($current_status == NET_CRIPPLED) {
-		$msg = 'Unable to start VPN. Network put in safe mode';
+	} elsif ($status_to_display == NET_CRIPPLED) {
+		$msg = 'Unable to start VPN. Network put into safe mode';
 	} else {
-		$msg = 'Network is in an unknown status (' . $current_status . ')';
+		$msg = 'Network is in an unknown status (' . $status_to_display . ')';
 	}
 	$ctx->log(debug => "Popup: " . $msg ) if DEBUG > 0;
 
-	# find user with terminal :0
-	my ($line, $username);
-	open(WHO, "who -s |");
-	while ($line = <WHO>) {
-		if ($line =~ /^(\S+)\s+:0\s+.*/) {
-			$username = $1;
-			last;
+	try {
+		# find user with terminal :0
+		my ($line, $username);
+		open(WHO, "who -s |");
+		while ($line = <WHO>) {
+			if ($line =~ /^(\S+)\s+:0\s+.*/) {
+				$username = $1;
+				last;
+			}
 		}
-	}
-	# if who parse fails, use username with ID 1000
-	if (not defined($username)) {
-		$username = getpwuid(1000);
-		$ctx->log(debug => "Who parse failed. using user ($username) ID 1000." ) if DEBUG > 0;
-	}
+		# if who parse fails, use username with ID 1000
+		if (not defined($username)) {
+			$username = getpwuid(1000);
+			$ctx->log(debug => "Who parse failed. using user ($username) ID 1000." ) if DEBUG > 0;
+		}
 
-	# check is xhost already allows non-network local connections 
-	my $remove_access = 0;
-	if (system("su -l " . $username . " -c \"DISPLAY=:0 xhost \" | grep -i LOCAL 1>/dev/null")) {
-		# add non-network local connections to X display access control list
-		system("su -l " . $username . " -c \"DISPLAY=:0 xhost +local:\" 1>/dev/null");
-		$remove_access = 1;
-		$ctx->log(debug => "Non-network local connections added to X display access control list" ) if DEBUG > 0;
-	}
+		# check is xhost already allows non-network local connections 
+		my $remove_access = 0;
+		if (system("su -l " . $username . " -c \"DISPLAY=:0 xhost \" | grep -i LOCAL >/dev/null")) {
+			# add non-network local connections to X display access control list
+			system("su -l " . $username . " -c \"DISPLAY=:0 xhost +local:\" >/dev/null");
+			$remove_access = 1;
+			$ctx->log(debug => "Non-network local connections added to X display access control list" ) if DEBUG > 0;
+		}
 
-	my $cmd=("kdialog --display :0 --title \"PrivateOn-VPN\" --passivepopup \"" . $msg . "\" 120 &");
-	$ctx->log(debug => '<' . $cmd . '>') if DEBUG > 1;
-	system($cmd);
+		my $cmd=("kdialog --display :0 --title \"PrivateOn-VPN\" --passivepopup \"" . $msg . "\" 120 &");
+		$ctx->log(debug => '<' . $cmd . '>') if DEBUG > 1;
+		system($cmd);
 
-	# undo xhost exception
-	if ($remove_access) {
-		system("su -l " . $username . " -c \"DISPLAY=:0 xhost -local:\" 1>/dev/null");
-		$ctx->log(debug => "Non-network local connections removed from X display access control list" ) if DEBUG > 0;
-	}
+		# undo xhost exception
+		if ($remove_access) {
+			system("su -l " . $username . " -c \"DISPLAY=:0 xhost -local:\" >/dev/null");
+			$ctx->log(debug => "Non-network local connections removed from X display access control list" ) if DEBUG > 0;
+		}
+	} catch {
+		$ctx->log(error => "Popup routine failed. Cause = $_" );
+	};
 
 	return;
 }
@@ -405,7 +454,7 @@ sub fake_systemv_logger
 	}
 
 	# check if system has systemd journal logging
-	if ( system('pidof systemd-journald') eq 0 ) {
+	if ( system('pidof systemd-journald >/dev/null 2>&1') eq 0 ) {
 		$ctx->log(debug => "Starting vpn_logger.sh background process" ) if DEBUG > 0;
 		system( PATH . "vpn-monitor/vpn_logger.sh &");
 		return 0;
@@ -418,14 +467,14 @@ sub fake_systemv_logger
 sub stop_systemv_logger
 {
 	# do nothing if system doesn't have systemd journal logging
-	if ( system('pidof systemd-journald') ne 0 ) {
+	if ( system('pidof systemd-journald >/dev/null 2>&1') eq 0 ) {
 		return 0;
 	}
 
 	$ctx->log(debug => "Stopping vpn_logger.sh background process" ) if DEBUG > 0;
 
 	if (`ps -ef | grep vpn_logger.sh | grep -v grep | wc -l` > 0) {
-		system("/bin/pkill -9 vpn_logger.sh");
+		system("/bin/pkill -9 vpn_logger.sh &");
 	}
 
 	my @pid;
@@ -439,7 +488,7 @@ sub stop_systemv_logger
 
 ################	   Cripple subroutines		################
 
-sub redirect_page()
+sub redirect_page
 {
 	$ctx->log(warn => "Redirecting all web traffic to warning page" );
 	# redirect the web page to a static page
@@ -558,8 +607,9 @@ ROUTE_DEL:
 
 ################	    Undo Crippling fork		################
 
-sub spawn_undo_crippling()
+sub spawn_undo_crippling
 {
+	$Current_Task = "uncrippling";
 	$ctx->log(info => "Undoing all network crippling" );
 	$ctx->log(debug => "Spawning undo_crippling") if DEBUG > 0;
 
@@ -585,27 +635,28 @@ sub spawn_undo_crippling()
 		);
 
 	$rpc->( \&undo_crippling_callback);
-	$Current_Task = "uncrippling";
 }
 
 
-sub undo_crippling_callback()
+sub undo_crippling_callback
 {
-	$Current_Task = "idle";
-	my $current_status = get_api_status();
-	update_status_file($current_status);
-	popup_dialog($current_status);
+	set_current_task_to_idle();
+	$Current_Status = get_api_status();
+	$Current_Update_Time = time();
+	update_status_file($Current_Status);
+	popup_dialog($Current_Status);
 	return 0;
 }
 
 
-sub undo_crippling_on_error()
+sub undo_crippling_on_error
 {
-	$Current_Task = "idle";
+	set_current_task_to_idle();
 	my $msg = shift;
 	$ctx->log( error => "undo_crippling child process died unexpectedly: " . $msg );
-	my $current_status = get_api_status();
-	if ($current_status == NET_PROTECTED || $current_status == NET_UNPROTECTED) {
+	$Current_Status = get_api_status();
+	$Current_Update_Time = time();
+	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED) {
 		return 0;
 	} else {
 		system("/usr/bin/rm -f /etc/resolv.conf");
@@ -615,7 +666,8 @@ sub undo_crippling_on_error()
 }
 
 
-sub check_crippled {
+sub check_crippled
+{
 	# Returns true if crippling is on
 	my $pslist = qx!/usr/bin/ps -aef!;
 	my @pslist = split("\n", $pslist);
@@ -650,15 +702,19 @@ sub check_crippled {
 		}
 	}
 	
-	if ( $Current_Task eq "crippled" || $Current_Task eq "uncrippling" ) { $Current_Task = "idle"; };
+	if ( $Current_Task eq "crippled" || $Current_Task eq "uncripling" ) { 
+		set_current_task_to_idle();
+	};
+
 	return 0;
 }
 
 
 ################	     VPN Retry fork		################
 
-sub spawn_retry_vpn()
+sub spawn_retry_vpn
 {
+	$Current_Task = "retrying";
 	$ctx->log(debug => "Spawning retry_vpn") if DEBUG > 0;
 
 	# kill previous instance if still running
@@ -682,13 +738,12 @@ sub spawn_retry_vpn()
 		);
 
 	$rpc->( \&retry_vpn_callback);
-	$Current_Task = "retrying";
 }
 
 
-sub retry_vpn_callback()
+sub retry_vpn_callback
 {
-	$Current_Task = "idle";
+	set_current_task_to_idle();
 	if (get_api_status() == NET_UNPROTECTED) {
 		redirect_page();
 		update_status_file(NET_CRIPPLED);
@@ -698,15 +753,16 @@ sub retry_vpn_callback()
 }
 
 
-sub retry_vpn_on_error()
+sub retry_vpn_on_error
 {
-	$Current_Task = "idle";
+	set_current_task_to_idle();
 	my $msg = shift;
 	$ctx->log( error => "Retry_vpn child process died unexpectedly: " . $msg );
-	my $current_status = get_api_status();
-	if ($current_status == NET_PROTECTED) {
+	$Current_Status = get_api_status();
+	$Current_Update_Time = time();
+	if ($Current_Status == NET_PROTECTED) {
 		return 0;
-	} elsif ($current_status == NET_UNPROTECTED) {
+	} elsif ($Current_Status == NET_UNPROTECTED) {
 		redirect_page();
 		update_status_file(NET_CRIPPLED);
 		popup_dialog(NET_CRIPPLED);
@@ -720,51 +776,54 @@ sub retry_vpn_on_error()
 
 ################     Detect Change in Network State	################
 
-sub refresh {
+sub refresh
+{
 	if ( not defined($Monitor_Enabled) or $Monitor_Enabled == 0 or $Temporary_Disable == 1) {
 		return;
 	}
 
 	$ctx->log(debug => "Refreshing network status") if DEBUG > 0;
 
-	my $current_status = get_api_status();
-	log_net_status($current_status) if DEBUG > 0;
-	$ctx->log(debug => "\tprevious_status = " . get_status_text($Previous_Status) . " current_status = " . get_status_text($current_status) ) if DEBUG > 1;
+	$Current_Status = get_api_status();
+	$Current_Update_Time = time();
+	log_net_status($Current_Status) if DEBUG > 0;
+	$ctx->log(debug => "\tprevious_status = " . get_status_text($Previous_Status) . " current_status = " . get_status_text($Current_Status) ) if DEBUG > 1;
 
 	my $tmp_previous = $Previous_Status;
-	$Previous_Status = $current_status;
+	$Previous_Status = $Current_Status;
 
 	# do not retry/redirect if previous state was CRIPPLED, redirect on next iteration
-	if ($current_status == NET_UNPROTECTED and $tmp_previous != NET_CRIPPLED) {
+	if ($Current_Status == NET_UNPROTECTED and $tmp_previous != NET_CRIPPLED) {
 		# spawn_retry_vpn calls retry_vpn_callback when it finishes
 		spawn_retry_vpn();
 	}
 
 	# update Current_Task in case callbacks failed to be called
 	if ($Current_Task ne "idle") {
-		if ($Current_Task eq "uncrippling" && $current_status != NET_CRIPPLED) { 
+		if ($Current_Task eq "uncrippling" && $Current_Status != NET_CRIPPLED) { 
 			unless ( check_crippled() ) { $Current_Task = "idle"; };
 		} elsif ($Current_Task eq "retrying") {
 			if (`ps -ef | grep vpn_retry | grep -v grep | grep root | wc -l` == 0) { $Current_Task = "idle"; };
 		}
 	}
 
-	if ($current_status eq $tmp_previous) {
+	if ($Current_Status eq $tmp_previous) {
 		return(0);
 	} else {
-		$ctx->log(warn => "State changed from " . get_status_text($tmp_previous) . " to " . get_status_text($current_status) );
-		popup_dialog($current_status);
+		$ctx->log(warn => "State changed from " . get_status_text($tmp_previous) . " to " . get_status_text($Current_Status) );
+		popup_dialog($Current_Status);
 		return(999) if ($tmp_previous == 999);
-		return(1) if ($current_status == NET_ERROR);
-		return(1) if ($current_status == NET_BROKEN);
-		update_status_file($current_status);
+		return(1) if ($Current_Status == NET_ERROR);
+		return(1) if ($Current_Status == NET_BROKEN);
+		update_status_file($Current_Status);
 	}
 }
 
 
 ################	  Initialize subroutine		################
 
-sub run_once {
+sub run_once
+{
 	system("/usr/bin/mkdir -p /var/run/PrivateOn");
 
 	$ctx = new AnyEvent::Log::Ctx;
@@ -883,7 +942,7 @@ tcp_server(
 
 				# kill vpn_retry instance if running
 				system("/bin/pkill -9 vpn_retry");
-				$Current_Task = "idle";
+				$Current_Task = "temporary";
 
 				# destroy timer / re-enable crippling after 1 minute
 				undef $timer2; 
@@ -891,6 +950,7 @@ tcp_server(
 					after => 60, 
 					cb => sub {
 						$Temporary_Disable = 0;
+						$Current_Task = "idle";
 						$ctx->log(debug => "Temporary disable_crippling ended") if DEBUG > 0;
 					},
 				);
@@ -1009,25 +1069,7 @@ tcp_server(
 				$ctx->log(debug => "Monitor disabled") if DEBUG > 0;
 
 			} elsif ($buf eq "monitor-state") {
-				my $output;
-
-				# first part values = Enabled/Disabled
-				if ($Monitor_Enabled) {
-					$output = "Enabled-";
-				} else {
-					$output = "Disabled-";
-				}
-
-				# second part values = crippled/uncrippling/retrying/temporary/idle
-				if ($Current_Task ne "idle") {
-					$output .= $Current_Task;
-				} elsif ($Temporary_Disable) {
-					$output = "Disabled-temporary";
-				} else {
-					$output .= "idle";
-				}
-				$output .= "\n";
-				$self->push_write($output);
+				$self->push_write(get_monitor_state() . "\n");
 
 			} else {
 				$self->push_write("say what?\n");
