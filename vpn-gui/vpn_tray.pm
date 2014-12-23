@@ -10,7 +10,9 @@ package vpn_tray;
 #
 
 use strict;
-#use warnings;
+use warnings;
+use feature 'state';
+
 use vpn_window;
 use vpn_ipc qw(get_net_status getMonitorState);
 use QtCore4;
@@ -25,14 +27,15 @@ use QtCore4::slots
 use File::Basename;
 
 
-# net status
+# monitor state / net status
 use constant {
-	NET_UNPROTECTED => 0,
-	NET_PROTECTED   => 1,
-	NET_BROKEN      => 2,
-	NET_CRIPPLED    => 3,
-	NET_ERROR       => 99,
-	NET_UNKNOWN     => 100
+	UNPROTECTED => 0,
+	PROTECTED   => 1,
+	BROKEN      => 2,
+	ERROR       => 2,	# BROKEN and ERROR use same icon
+	CRIPPLED    => 3,
+	REFRESH     => 4,
+	GUARD       => 5	# Increment GUARD to basic state, e.g. PROTECTED+GUARD
 };
 
 
@@ -94,23 +97,53 @@ sub setVisible
 
 sub setIcon
 {
-	my ($index) = @_;
+	my $index = ERROR;
 
-	my $current_status = getNetStatus();
+	state $previous_state_string = "";
+	my $current_state_string = getMonitorState();
 
-	if ($current_status == NET_UNPROTECTED) {
-		$index = 0; # vpn is down
-	} elsif ($current_status == NET_PROTECTED) {
-		$index = 1; # vpn is up
-	} else {
-		$index = 2; # network is down
+	# do nothing if state has not changed
+	if ($current_state_string eq $previous_state_string) {
+		this->{timer}->start(10000);    # next setIcon in 10 seconds
+		return;
 	}
+
+	# if we got this far, something has changed
+	if ($current_state_string =~ /(\S+)-(\S+)-(\S+)/) {
+		my $monitor = $1;
+		my $task = $2;
+		my $network = $3;
+
+		if ( $task eq "unknown" || $network eq "UNKNOWN" || $network eq "ERROR" ) {
+			$index = ERROR;
+		} elsif ( $task eq "retrying" || $task eq "temporary" ) {
+			$index = REFRESH;
+		} elsif ( $task eq "crippled" || $task eq "uncrippling" || $network eq "CRIPPLED") {
+			$index = CRIPPLED;
+		} elsif ( $network eq "UNPROTECTED" ) {
+			$index = UNPROTECTED;
+		} elsif ( $network eq "PROTECTED" ) {
+			$index = PROTECTED;
+		} elsif ( $network eq "BROKEN" ) {
+			$index = BROKEN;
+		}
+
+		if ( $monitor eq "Enabled" ) {
+			$index = $index + GUARD;
+		}
+	}
+
 	my $icon = this->{iconComboBox}->itemIcon($index);
 	this->{trayIcon}->setIcon($icon);
 	this->{windowIcon} = $icon;
-
 	this->{trayIcon}->setToolTip(this->{iconComboBox}->itemText($index));
-	this->{timer}->start(10000);
+
+# temporary debug code
+print "\tSystray - State change current_state = $current_state_string\tindex = $index\n";
+
+	this->{timer}->start(10000);	# next setIcon in 10 seconds
+	$previous_state_string = $current_state_string;
+	return;
 }
 
 
@@ -145,9 +178,38 @@ sub createIconGroupBox
 	this->{iconLabel} = Qt::Label('Icon:');
 
 	this->{iconComboBox} = Qt::ComboBox();
-	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/unprotected.png'), this->tr('Unprotected'));
-	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/protected.png'), this->tr('Protected'));
-	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/broken.png'), this->tr('No Net'));
+#	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/unprotected.png'), this->tr('Unprotected'));
+#	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/protected.png'), this->tr('Protected'));
+#	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/broken.png'), this->tr('No Net'));
+
+	# icon for monitor disabled
+	this->{iconComboBox}->insertItem( UNPROTECTED , 
+	   Qt::Icon(dirname($0).'/images/tray-unprotected-ignore.png'), this->tr('Unprotected'));
+	this->{iconComboBox}->insertItem( PROTECTED , 
+	   Qt::Icon(dirname($0).'/images/tray-protected-ignore.png'), this->tr('Protected'));
+	this->{iconComboBox}->insertItem( BROKEN , 
+	   Qt::Icon(dirname($0).'/images/tray-broken-ignore.png'), this->tr('Offline'));
+	this->{iconComboBox}->insertItem( CRIPPLED , 
+	   Qt::Icon(dirname($0).'/images/tray-crippled-guard.png'), this->tr('Safe-Mode'));
+	this->{iconComboBox}->insertItem( REFRESH , 
+	   Qt::Icon(dirname($0).'/images/tray-refresh-guard.png'), this->tr('Refreshing'));
+
+	# icon for monitor enabled
+	this->{iconComboBox}->insertItem( UNPROTECTED+GUARD , 
+	   Qt::Icon(dirname($0).'/images/tray-unprotected-guard.png'), this->tr('Unprotected'));
+	this->{iconComboBox}->insertItem( PROTECTED+GUARD , 
+	   Qt::Icon(dirname($0).'/images/tray-protected-guard.png'), this->tr('Protected'));
+	this->{iconComboBox}->insertItem( BROKEN+GUARD , 
+	   Qt::Icon(dirname($0).'/images/tray-broken-guard.png'), this->tr('Offline'));
+	this->{iconComboBox}->insertItem( CRIPPLED+GUARD , 
+	   Qt::Icon(dirname($0).'/images/tray-crippled-guard.png'), this->tr('Safe-Mode'));
+	this->{iconComboBox}->insertItem( REFRESH+GUARD , 
+	   Qt::Icon(dirname($0).'/images/tray-refresh-guard.png'), this->tr('Refreshing'));
+
+	# check that we got all icons, 5 basic states * 2 Enabled/disabled
+	if ( this->{iconComboBox}->count() < 10 ) {
+		print "\nError: Some icons failed to load. Icon count = " . this->{iconComboBox}->count() . "/10 \n";
+	}
 
 	this->{showIconCheckBox} = Qt::CheckBox(this->tr('Show icon'));
 	this->{showIconCheckBox}->setChecked(1);
