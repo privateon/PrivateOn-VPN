@@ -103,8 +103,6 @@ sub NEW {
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
 
 	my $status = Qt::TextEdit();
-	my $status_text;
-	my $api_status = getApiStatus();
 	$status->setReadOnly(1);
 	$status->setMinimumHeight(75);
 	$status->setMaximumHeight(75);
@@ -113,6 +111,9 @@ sub NEW {
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
 	this->{serverCountryCombo} = Qt::ComboBox();
 	this->{serverCountryCombo}->setMinimumContentsLength(16);
+
+	# show VPN/network/monitor status and retreieve api_status
+	my $api_status = showNetStatus();
 
 	# set default values to be used if values not found in ini file 
 	my $default_protocol = "tcp";
@@ -132,22 +133,9 @@ sub NEW {
 			}
 		}
 	} else {
-		$status_text = "No previous configuration file.\n";
+		my $status_text = "No previous configuration file.\n";
+		setStatusText($status_text);
 	}
-
-	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
-		$status_text .= "The network is online!\n";
-	} elsif ($api_status == NET_CRIPPLED) {
-		$status_text .= "The network is in safemode!\n";
-	} else {
-		$status_text .= "The network is offline!\n";
-	}
-	if ($api_status == NET_PROTECTED) {
-		$status_text .= "The VPN is up!\n";
-	} else {
-		$status_text .= "The VPN is down!\n";
-	}
-	setStatusText($status_text);
 
 	this->{countrylist} = getComboboxCountries();
 
@@ -228,7 +216,7 @@ sub NEW {
 
 	my $pty;
 	unless ($pty = IO::Pty::Easy->new) {
-		$status_text = "Could not create new pty.  Reason: " . $! . "\n";
+		my $status_text = "Could not create new pty.  Reason: " . $! . "\n";
 		setStatusText($status_text);
 		return(1);
 	}
@@ -320,25 +308,45 @@ sub setStatusText {
 
 sub showNetStatus {
 	my $status_text;
-	my $api_status = getNetStatus();
+	my $api_status = getApiStatus();
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
-		$status_text = "The network is online!\n";
+		$status_text = "The network is online\n";
 	} elsif ($api_status == NET_CRIPPLED) {
-		$status_text = "The network is in safemode!\n";
+		$status_text = "The network is in safemode\n";
 	} else {
-		$status_text = "The network is offline!\n";
+		$status_text = "The network is offline\n";
 	}
 	if ($api_status == NET_PROTECTED) {
-		$status_text .= "The VPN is up!\n";
+		$status_text .= "The VPN is up\n";
 		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_CRIPPLED) {
-		$status_text .= "The VPN is down!\n";
+		$status_text .= "The VPN is down\n";
 		this->{turnoffButton}->setEnabled(1);
 	} else {
-		$status_text .= "The VPN is down!\n";
+		$status_text .= "The VPN is down\n";
 		this->{turnoffButton}->setEnabled(0);
 	}
+
+	my $current_state_string = getMonitorState();
+	if ($current_state_string =~ /(\S+)-(\S+)-\S+/) {
+		my $monitor = $1;
+		my $task = $2;
+		if ( $task eq "unknown") {
+			$status_text .= "The monitor state is unknown\n";
+			print "ERROR: getMonitorState returned unknown \"$current_state_string\" \n" if DEBUG > 0;
+		} elsif ( $monitor eq "Enabled" ) {
+			$status_text .= "The monitor is enabled\n";
+		} elsif ( $monitor eq "Disabled" ) {
+			$status_text .= "The monitor is disabled\n";
+		} else {
+			$status_text .= "The monitor state is unknown\n";
+			print "ERROR: Could not parse monitor state. getMonitorState returned \"$current_state_string\" \n" if DEBUG > 0;
+		}
+	} else {
+		$status_text .= "The monitor state is unknown\n";
+		print "ERROR: Could not parse monitor state. getMonitorState returned \"$current_state_string\" \n" if DEBUG > 0;
+	} 
 
 	print "$status_text.\n" if DEBUG > 0;
 	setStatusText($status_text);
