@@ -934,7 +934,8 @@ tcp_server(
 			print "Received: " . $buf . "\n" if DEBUG > 2;
 
 			if ($buf eq "force-refresh") {
-				refresh();
+				# force get_monitor_state to update Current_Status by time traveling to the age of disco
+				$Current_Update_Time = 0;
 				$self->push_write("refresh ok\n");
 
 			} elsif ($buf eq "take-a-break") {

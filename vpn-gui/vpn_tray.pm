@@ -14,7 +14,7 @@ use warnings;
 use feature 'state';
 
 use vpn_window;
-use vpn_ipc qw(get_net_status getMonitorState);
+use vpn_ipc qw(getMonitorState);
 use QtCore4;
 use QtGui4;
 use QtCore4::isa qw(Qt::Dialog);
@@ -178,9 +178,6 @@ sub createIconGroupBox
 	this->{iconLabel} = Qt::Label('Icon:');
 
 	this->{iconComboBox} = Qt::ComboBox();
-#	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/unprotected.png'), this->tr('Unprotected'));
-#	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/protected.png'), this->tr('Protected'));
-#	this->{iconComboBox}->addItem(Qt::Icon(dirname($0).'/images/broken.png'), this->tr('No Net'));
 
 	# icon for monitor disabled
 	this->{iconComboBox}->insertItem( UNPROTECTED , 

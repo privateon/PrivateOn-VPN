@@ -596,7 +596,6 @@ sub updateDefaultVpn {
 	this->{buttonTimer}->start(20000);
 
 	takeABreak();
-#	forceRefresh();
 	removeDispatcher();
 
 	my $status_text;
@@ -712,6 +711,7 @@ sub updateDefaultVpnResume {
 		$status_text .="supports protocol " . uc($stype) . ".\n";
 		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
+		forceRefresh();
 		return;
 	}
 
@@ -744,6 +744,7 @@ sub updateDefaultVpnResume {
 		this->{internalTimer}->start(5*1000);
 	}
 	enableMonitor();
+	forceRefresh();
 }
 
 
@@ -912,7 +913,7 @@ sub turnOffVpn {
 		}
 	}
 	system("pkill -9 openvpn");
-#	forceRefresh();	
+	forceRefresh();	
 	this->{internalTimer}->start(5*1000);
 
 	$status_text = "The VPN connection is deactivated.\n";
@@ -960,6 +961,10 @@ sub updateStatus {
 	my $tmp_previous = $previous_status;
 	$previous_status = $current_status;
 
+	if ($current_status != $previous_status) {
+		forceRefresh();
+	}
+
 	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
 		$status_text .= "Network state changed to NET_BROKEN.\n";
 	} elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
@@ -982,7 +987,7 @@ sub updateStatus {
 
 	# progress indicator dots if last line of status texts is 'Please hold on'
 	if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
-		unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {		
+		unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {
 			chomp $status_text;
 		}
 		$status_text .= ".\n";
