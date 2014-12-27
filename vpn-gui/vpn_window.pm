@@ -19,7 +19,7 @@ use QtGui4;
 use QtCore4::isa qw( Qt::MainWindow);
 use QtCore4::slots
 	closeEvent => ['Qt::CloseEvent'],
-	reenableButton => [],
+	reenableRefreshButton => [],
 	setCountry => ['int'],
 	setServerType => ['int'],
 	setUserInfo => [],
@@ -75,7 +75,7 @@ sub NEW {
 
 	# button enable/disable timer
 	this->{buttonTimer} = Qt::Timer(this);
-	this->connect(this->{buttonTimer}, SIGNAL('timeout()'), SLOT('reenableButton()'));
+	this->connect(this->{buttonTimer}, SIGNAL('timeout()'), SLOT('reenableRefreshButton()'));
 
 	# Resume timer to continue processing after vpn disabled
 	this->{resumeTimer} = Qt::Timer(this);
@@ -247,7 +247,7 @@ sub setServerType {
 }
 
 
-sub reenableButton {
+sub reenableRefreshButton {
 	this->{refreshButton}->setEnabled(1);
 	this->{buttonTimer}->stop();
 }
@@ -340,11 +340,29 @@ sub showNetStatus {
 	} else {
 		$status_text .= "The monitor state is unknown\n";
 		print "ERROR: Could not parse monitor state. getMonitorState returned \"$current_state_string\" \n" if DEBUG > 0;
-	} 
+	}
 
 	print "$status_text.\n" if DEBUG > 0;
 	setStatusText($status_text);
+
+	# update button text and enabled/disabled
+	setButtons($current_state_string);
+
 	return($api_status);
+}
+
+
+sub setButtons {
+	my ($current_state_string) = @_;
+
+	if ($current_state_string =~ /(\S+)-(\S+)-(\S+)/) {
+		my $monitor = $1;
+		my $task = $2;
+		my $network = $3;
+
+# temporary debug code
+print "\n\tsetButtons - monitor = $monitor\t task = $task\t network = $network\n";
+	}
 }
 
 
@@ -936,7 +954,9 @@ sub updateStatus {
 
 	# initialize persistent variables
 	state $previous_status = 100;
-	state $last_pty_read = 4102444800000; # epoch year 2100
+	state $last_pty_read = 4102444800000; 	# epoch year 2100
+	state $previous_state_string = "";
+	state $last_state_read = 0; 		# epoch year 1970
 
 	while ( my $output = $pty->read(0) ) {
 		$status_text .= $output;
@@ -970,7 +990,7 @@ sub updateStatus {
 	my $tmp_previous = $previous_status;
 	$previous_status = $current_status;
 
-	if ($current_status != $previous_status) {
+	if ($current_status != $tmp_previous) {
 		forceRefresh();
 	}
 
@@ -1016,6 +1036,16 @@ sub updateStatus {
 
 	if ($status_text_changed) {
 		setStatusText($status_text);
+	}
+
+	# if network status has changed OR at least 10 seconds have passed, update button text and enabled/disabled
+	if ( ($current_status != $tmp_previous) || ($current_time - $last_state_read >= 10) ) {
+		my $current_state_string = getMonitorState();
+		if ($current_state_string ne $previous_state_string) {
+			setButtons($current_state_string);
+			$previous_state_string = $current_state_string;
+			$last_state_read = $current_time;
+		}
 	}
 }
 
