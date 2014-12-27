@@ -102,15 +102,21 @@ sub NEW {
 	my $image = Qt::Label();
 	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
 
+	this->{turnoffButton} = Qt::PushButton(this->tr('Turn off'));
+	this->{refreshButton} = Qt::PushButton(this->tr('Refresh'));
+	this->{userpassButton} = Qt::PushButton(this->tr('Servers')); # Update server list and user/password
+	this->{turnoffButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->{userpassButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->{refreshButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->connect(this->{userpassButton}, SIGNAL "clicked()", this, SLOT "setUserInfo()");
+	this->connect(this->{refreshButton}, SIGNAL "clicked()", this, SLOT 'updateDefaultVpn()');
+	this->connect(this->{turnoffButton}, SIGNAL "clicked()", this, SLOT 'turnOffVpn()');
+
 	my $status = Qt::TextEdit();
 	$status->setReadOnly(1);
 	$status->setMinimumHeight(75);
 	$status->setMaximumHeight(75);
 	this->{statusOutput} = $status;
-
-	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
-	this->{serverCountryCombo} = Qt::ComboBox();
-	this->{serverCountryCombo}->setMinimumContentsLength(16);
 
 	# show VPN/network/monitor status and retreieve api_status
 	my $api_status = showNetStatus();
@@ -137,7 +143,11 @@ sub NEW {
 		setStatusText($status_text);
 	}
 
+	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
+	this->{serverCountryCombo} = Qt::ComboBox();
+	this->{serverCountryCombo}->setMinimumContentsLength(16);
 	this->{countrylist} = getComboboxCountries();
+	this->connect(this->{serverCountryCombo}, SIGNAL 'activated(int)', this, SLOT 'setCountry(int)');
 
 	my $serverTypeLabel = Qt::Label(this->tr('Server Type: '));
 	my $serverTypeCombo = Qt::ComboBox();
@@ -153,22 +163,6 @@ sub NEW {
 		$serverTypeCombo->setCurrentIndex(0);
 		this->{id_serverType} = 0;
 	}
-
-	this->{turnoffButton} = Qt::PushButton(this->tr('Turn off'));
-	if ($api_status != NET_PROTECTED and $api_status != NET_CRIPPLED) {
-		this->{turnoffButton}->setEnabled(0);
-	}
-	this->{refreshButton} = Qt::PushButton(this->tr('Refresh'));
-	this->{userpassButton} = Qt::PushButton(this->tr('Servers')); # Update server list and user/password
-
-	this->{turnoffButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	this->{userpassButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	this->{refreshButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	this->connect(this->{userpassButton}, SIGNAL "clicked()", this, SLOT "setUserInfo()");
-	this->connect(this->{refreshButton}, SIGNAL "clicked()", this, SLOT 'updateDefaultVpn()');
-	this->connect(this->{turnoffButton}, SIGNAL "clicked()", this, SLOT 'turnOffVpn()');
-
-	this->connect(this->{serverCountryCombo}, SIGNAL 'activated(int)', this, SLOT 'setCountry(int)');
 	this->connect($serverTypeCombo, SIGNAL 'activated(int)', this, SLOT 'setServerType(int)');
 	
 	my $titleLayout = Qt::HBoxLayout();
@@ -936,6 +930,7 @@ sub turnOffVpn {
 sub updateStatus {
 	my $status = this->{statusOutput};
 	my $status_text = $status->toPlainText();
+	my $status_text_changed = 0;
 	my $pty = this->{pty};
 	my $active_flag = $pty->is_active();
 
@@ -943,26 +938,32 @@ sub updateStatus {
 	state $previous_status = 100;
 	state $last_pty_read = 4102444800000; # epoch year 2100
 
-	print "." if DEBUG > 0;
-
 	while ( my $output = $pty->read(0) ) {
 		$status_text .= $output;
+		$status_text_changed = 1;
 		$active_flag = 1;
 	}
+
+	my $current_time = time();
 	if ($active_flag) {
 		this->{internalTimer}->start(1000);
-		$last_pty_read = time();
+		$last_pty_read = $current_time;
+		print "#" if DEBUG > 0;
 	} else {
-		if ( time() - $last_pty_read > 5*60 ) { # keep text for 5 min
+		if ( $current_time - $last_pty_read > 2*60 ) { # keep text for 2 min
 			my $api_status = showNetStatus();
 			if ($api_status == NET_PROTECTED) {
 				this->{internalTimer}->start(5*60*1000);
 			} else {
 				this->{internalTimer}->start(60*1000);
 			}
-		} elsif ( time() - $last_pty_read > 60 ) { # slow down refresh after 1 minute
-			this->{internalTimer}->start(20*1000);
+			return;
+		} elsif ( $current_time - $last_pty_read > 30 ) { # slow down refresh after 30 seconds
+			this->{internalTimer}->start(5*1000);
+		} elsif ( $current_time - $last_pty_read > 60 ) { # slow down refresh even more after 1 minute
+			this->{internalTimer}->start(10*1000);
 		}
+		print "." if DEBUG > 0;
 	}
 
 	my $current_status = getNetStatus();
@@ -975,13 +976,17 @@ sub updateStatus {
 
 	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
 		$status_text .= "Network state changed to NET_BROKEN.\n";
+		$status_text_changed = 1;
 	} elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
 		$status_text .= "Network state changed to NET_ERROR.\n";
+		$status_text_changed = 1;
 	} elsif ($current_status == NET_UNKNOWN && $tmp_previous != NET_UNKNOWN) {
 		$status_text .= "Network state changed to NET_UNKNOWN.\n";
+		$status_text_changed = 1;
 	} elsif ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
 		this->{userpassButton}->setEnabled(0);
 		$status_text .= "Network placed in safemode, check VPN settings.\n";
+		$status_text_changed = 1;
 	} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
 		this->{refreshButton}->setEnabled(1);
 		this->{buttonTimer}->stop();
@@ -991,17 +996,27 @@ sub updateStatus {
 	if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
 		this->{userpassButton}->setEnabled(1);
 		$status_text .= "Network restored from safemode.\n";
+		$status_text_changed = 1;
 	}
 
-	# progress indicator dots if last line of status texts is 'Please hold on'
-	if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
-		unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {
-			chomp $status_text;
+	if ($status_text =~ /please\shold\son/i) {
+		# add progress indicator dots if last line of status text is 'Please hold on'
+		if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
+			unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {
+				chomp $status_text;
+			}
+			$status_text .= ".\n";
+			$status_text_changed = 1;
+		} else {
+		# since the task is completed, remove dots and lines before the dots
+			$status_text =~ s/.*[\r]?[\n]?.*please\shold\son[.]?[\r]?[\n]?[.]*[\r]?[\n]?//i;
+			$status_text_changed = 1;
 		}
-		$status_text .= ".\n";
 	}
 
-	setStatusText($status_text);
+	if ($status_text_changed) {
+		setStatusText($status_text);
+	}
 }
 
 1;
