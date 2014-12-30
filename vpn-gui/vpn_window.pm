@@ -104,10 +104,10 @@ sub NEW {
 
 	this->{turnoffButton} = Qt::PushButton(this->tr('Turn off'));
 	this->{refreshButton} = Qt::PushButton(this->tr('Refresh'));
-	this->{userpassButton} = Qt::PushButton(this->tr('Servers')); # Update server list and user/password
+	this->{userpassButton} = Qt::PushButton(this->tr('Servers')); 	# Update server list and user/password
 	this->{turnoffButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
-	this->{userpassButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
 	this->{refreshButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
+	this->{userpassButton}->setFont(Qt::Font("Times", 12, Qt::Font::Bold()));
 	this->connect(this->{userpassButton}, SIGNAL "clicked()", this, SLOT "setUserInfo()");
 	this->connect(this->{refreshButton}, SIGNAL "clicked()", this, SLOT 'updateDefaultVpn()');
 	this->connect(this->{turnoffButton}, SIGNAL "clicked()", this, SLOT 'turnOffVpn()');
@@ -355,14 +355,58 @@ sub showNetStatus {
 sub setButtons {
 	my ($current_state_string) = @_;
 
+	my $monitor;
+	my $task;
+	my $network;
+
 	if ($current_state_string =~ /(\S+)-(\S+)-(\S+)/) {
-		my $monitor = $1;
-		my $task = $2;
-		my $network = $3;
+		$monitor = $1;
+		$task = $2;
+		$network = $3;
+	} else {
+		$monitor = "Unknown";
+		$task = "unknown";
+		$network = "UNKNOWN";
+	}		
+	
+	# set turnoffButton and refreshButton
+	if ( $network eq "PROTECTED" ) {
+		this->{turnoffButton}->setText(this->tr('Turn off'));
+		this->{turnoffButton}->setEnabled(1);
+		this->{refreshButton}->setText(this->tr('Refresh'));
+		this->{refreshButton}->setEnabled(1);
+	} elsif ( $task eq "crippled" || $network eq "CRIPPLED" ) {
+		this->{turnoffButton}->setText(this->tr('No VPN'));
+		this->{turnoffButton}->setEnabled(1);
+		this->{refreshButton}->setText(this->tr('VPN'));
+		this->{refreshButton}->setEnabled(1);
+	} elsif ( $network eq "BROKEN" || $network eq "ERROR" ) {
+		this->{turnoffButton}->setText(this->tr('Fix'));
+		this->{turnoffButton}->setEnabled(1);
+		this->{refreshButton}->setText(this->tr('Start'));
+		this->{refreshButton}->setEnabled(0);
+	} elsif ( $monitor eq "Enabled" && $network ne "PROTECTED" ) {
+		this->{turnoffButton}->setText(this->tr('Disable'));
+		this->{turnoffButton}->setEnabled(1);
+		this->{refreshButton}->setText(this->tr('Start'));
+		this->{refreshButton}->setEnabled(1);
+	} elsif ( $monitor eq "Disabled" ) {
+		this->{turnoffButton}->setText(this->tr('Turn off'));
+		this->{turnoffButton}->setEnabled(0);
+		this->{refreshButton}->setText(this->tr('Start'));
+		this->{refreshButton}->setEnabled(1);
+	} else {
+# temporary debug code
+this->{turnoffButton}->setText(this->tr('Unknown')); 
+#		this->{turnoffButton}->setText(this->tr('Turn off'));
+		this->{turnoffButton}->setEnabled(1);
+		this->{refreshButton}->setText(this->tr('Start'));
+		this->{refreshButton}->setEnabled(0);
+	}
 
 # temporary debug code
 print "\n\tsetButtons - monitor = $monitor\t task = $task\t network = $network\n";
-	}
+
 }
 
 
