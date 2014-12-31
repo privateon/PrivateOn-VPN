@@ -669,6 +669,8 @@ sub undo_crippling_on_error
 sub check_crippled
 {
 	# Returns true if crippling is on
+
+	# Process check
 	my $pslist = qx!/usr/bin/ps -aef!;
 	my @pslist = split("\n", $pslist);
 	my $line;
@@ -683,13 +685,20 @@ sub check_crippled
 	}
 	return $thttpd_pid  if (defined($thttpd_pid ));
 	return $dnsmasq_pid if (defined($dnsmasq_pid));
-	my $route = qx!/sbin/route -n!;
-	my @routelist = split("\n", $route);
-	while ( defined($line = shift(@routelist))) {
-		if ($line =~ /^0\.0\.0\.0/) {
+
+	# Route check
+	unless (open ROUTE, '<', '/proc/net/route') {
+		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
+	}
+	while (<ROUTE>) {
+		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
+			close ROUTE;
 			return "Default route";
 		}
 	}
+	close ROUTE;
+
+	# Nameserver check
 	my $nameservers = qx!/usr/bin/grep nameserver /etc/resolv.conf!;
 	my @nameservers = split("\n", $nameservers);
 	my @resolvers = ();
@@ -702,6 +711,7 @@ sub check_crippled
 		}
 	}
 	
+	# if not crippled, change task to idle or temporary
 	if ( $Current_Task eq "crippled" || $Current_Task eq "uncripling" ) { 
 		set_current_task_to_idle();
 	};
