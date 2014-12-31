@@ -1036,33 +1036,44 @@ sub updateStatus {
 
 	if ($current_status != $tmp_previous) {
 		forceRefresh();
+
+		if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
+			$status_text .= "Network broken, please wait.\n";
+			$status_text_changed = 1;
+		} elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
+			$status_text .= "Network error, please wait.\n";
+			$status_text_changed = 1;
+		} elsif ($current_status == NET_UNKNOWN && $tmp_previous != NET_UNKNOWN) {
+			$status_text .= "Network changed to unknown state.\n";
+			$status_text_changed = 1;
+		} elsif ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
+			this->{userpassButton}->setEnabled(0);
+			$status_text .= "Network placed in safemode, check VPN settings.\n";
+			$status_text_changed = 1;
+		} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
+			this->{refreshButton}->setEnabled(1);
+			this->{buttonTimer}->stop();
+			this->{turnoffButton}->setEnabled(1);
+		}
+
+		if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
+			this->{userpassButton}->setEnabled(1);
+			$status_text .= "Network restored from safemode.\n";
+			$status_text_changed = 1;
+		} elsif ( ($current_status != NET_BROKEN || $current_status != NET_ERROR || $current_status != NET_UNKNOWN) 
+		   && ($tmp_previous == NET_BROKEN || $tmp_previous == NET_ERROR) ) {
+			# note: no recovered-text for NET_UNKNOWN, since GUI starts with UNKNOWN state
+			if ($current_status == NET_PROTECTED) {
+				$status_text .= "Recovered to protected mode.\n";
+				$status_text_changed = 1;
+			} elsif ($current_status == NET_UNPROTECTED) {
+				$status_text .= "Recovered to unprotected mode.\n";
+				$status_text_changed = 1;
+			}
+		}
 	}
 
-	if ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
-		$status_text .= "Network state changed to NET_BROKEN.\n";
-		$status_text_changed = 1;
-	} elsif ($current_status == NET_ERROR && $tmp_previous != NET_ERROR) {
-		$status_text .= "Network state changed to NET_ERROR.\n";
-		$status_text_changed = 1;
-	} elsif ($current_status == NET_UNKNOWN && $tmp_previous != NET_UNKNOWN) {
-		$status_text .= "Network state changed to NET_UNKNOWN.\n";
-		$status_text_changed = 1;
-	} elsif ($current_status == NET_CRIPPLED && $tmp_previous != NET_CRIPPLED) {
-		this->{userpassButton}->setEnabled(0);
-		$status_text .= "Network placed in safemode, check VPN settings.\n";
-		$status_text_changed = 1;
-	} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
-		this->{refreshButton}->setEnabled(1);
-		this->{buttonTimer}->stop();
-		this->{turnoffButton}->setEnabled(1);
-	}
-
-	if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
-		this->{userpassButton}->setEnabled(1);
-		$status_text .= "Network restored from safemode.\n";
-		$status_text_changed = 1;
-	}
-
+	# progress indicator dots
 	if ($status_text =~ /please\shold\son/i) {
 		# add progress indicator dots if last line of status text is 'Please hold on'
 		if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
