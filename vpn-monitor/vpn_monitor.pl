@@ -56,8 +56,9 @@ use constant {
 use constant {
 	NET_UNPROTECTED	=> 0,
 	NET_PROTECTED	=> 1,
-	NET_BROKEN	=> 2,
+	NET_OFFLINE     => 2,
 	NET_CRIPPLED	=> 3,
+	NET_BROKEN	=> 4,
 	NET_ERROR	=> 99,
 	NET_UNKNOWN	=> 100
 };
@@ -154,7 +155,7 @@ sub quick_net_status
 
 	unless (opendir $net, $sys_virtual_path) {
 		$ctx->log(error => "Could not open directory: " . $sys_virtual_path . " Reason: " . $!);
-		return NET_ERROR;
+		return NET_BROKEN;
 	}
 	while (my $file = readdir($net)) {
 		return NET_PROTECTED if ($file =~ /^tun[0-9]+/);
@@ -162,7 +163,7 @@ sub quick_net_status
 
 	unless (opendir $net, $sys_net_path) {
 		$ctx->log(error => "Could not open directory: " . $sys_net_path . " Reason: " . $!);
-		return NET_ERROR;
+		return NET_BROKEN;
 	}
 	while (my $file = readdir($net)) {
 		next unless (-d $sys_net_path."/".$file);
@@ -184,7 +185,7 @@ sub quick_net_status
 		close $operstate;
 		next if ($line[0] =~ /^unknown/);
 		if ($line[0] =~ /^down/) {
-			$net_status = NET_BROKEN;
+			$net_status = NET_OFFLINE;
 			next;
 		}
 		return NET_UNPROTECTED if ($line[0] =~ /^up/);
@@ -230,8 +231,9 @@ sub get_status_text
 
 	if ($status == NET_UNPROTECTED) { return "UNPROTECTED"; }
 	elsif ($status == NET_PROTECTED) { return "PROTECTED"; }
-	elsif ($status == NET_BROKEN) { return "BROKEN"; }
+	elsif ($status == NET_OFFLINE) { return "OFFLINE"; }
 	elsif ($status == NET_CRIPPLED) { return "CRIPPLED"; }
+	elsif ($status == NET_BROKEN) { return "BROKEN"; }
 	elsif ($status == NET_ERROR) { return "ERROR"; }
 
 	return "UNKNOWN";
@@ -395,10 +397,12 @@ sub popup_dialog
 		$msg = 'VPN connection is DOWN';
 	} elsif ($status_to_display == NET_PROTECTED) {
 		$msg = 'VPN connection is UP!';
-	} elsif ($status_to_display == NET_BROKEN) {
-		$msg = 'VPN connection is BROKEN';
+	} elsif ($status_to_display == NET_OFFLINE) {
+		$msg = 'Network is OFFLINE';
 	} elsif ($status_to_display == NET_CRIPPLED) {
 		$msg = 'Unable to start VPN. Network put into safe mode';
+	} elsif ($status_to_display == NET_BROKEN) {
+		$msg = 'Network is BROKEN';
 	} else {
 		$msg = 'Network is in an unknown status (' . $status_to_display . ')';
 	}

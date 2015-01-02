@@ -30,8 +30,9 @@ sub import {
 use constant {
 	NET_UNPROTECTED => 0,
 	NET_PROTECTED   => 1,
-	NET_BROKEN      => 2,
+	NET_OFFLINE     => 2,
 	NET_CRIPPLED    => 3,
+	NET_BROKEN      => 4,
 	NET_ERROR       => 99,
 	NET_UNKNOWN     => 100
 };

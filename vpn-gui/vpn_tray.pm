@@ -31,8 +31,9 @@ use File::Basename;
 use constant {
 	UNPROTECTED => 0,
 	PROTECTED   => 1,
+	OFFLINE     => 2,
 	BROKEN      => 2,
-	ERROR       => 2,	# BROKEN and ERROR use same icon
+	ERROR       => 2,	# OFFLINE, BROKEN and ERROR use same icon
 	CRIPPLED    => 3,
 	REFRESH     => 4,
 	GUARD       => 5	# Increment GUARD to basic state, e.g. PROTECTED+GUARD
@@ -124,7 +125,7 @@ sub setIcon
 			$index = UNPROTECTED;
 		} elsif ( $network eq "PROTECTED" ) {
 			$index = PROTECTED;
-		} elsif ( $network eq "BROKEN" ) {
+		} elsif ( $network eq "BROKEN" || $network eq "OFFLINE" ) {
 			$index = BROKEN;
 		}
 
