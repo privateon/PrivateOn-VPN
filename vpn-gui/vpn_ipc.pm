@@ -46,39 +46,45 @@ use constant {
 
 sub sendBackendCommand {
 	my $command = shift;
+
+	# make INET connection refused nonfatal
+	eval {	
+		$OUTPUT_AUTOFLUSH = 1;
+		my $sock = IO::Socket::INET->new(
+			PeerHost => IPC_HOST,
+			PeerPort => IPC_PORT,
+			Proto => 'tcp',
+		);
 	
-	$OUTPUT_AUTOFLUSH = 1;
-	my $sock = IO::Socket::INET->new(
-		PeerHost => IPC_HOST,
-		PeerPort => IPC_PORT,
-		Proto => 'tcp',
-	);
-	
-	return unless $sock;
-	$sock->send( $command . "\n" );
-	shutdown($sock, 1);
-	$sock->close();
+		return unless $sock;
+		$sock->send( $command . "\n" );
+		shutdown($sock, 1);
+		$sock->close();
+	};
 }
 
 
 sub sendBackendQuery {
 	my $command = shift;
 	
-	$OUTPUT_AUTOFLUSH = 1;
-	my $sock = IO::Socket::INET->new(
-		PeerHost => IPC_HOST,
-		PeerPort => IPC_PORT,
-		Proto => 'tcp',
-	);
+	# make INET connection refused nonfatal
+	eval {	
+		$OUTPUT_AUTOFLUSH = 1;
+		my $sock = IO::Socket::INET->new(
+			PeerHost => IPC_HOST,
+			PeerPort => IPC_PORT,
+			Proto => 'tcp',
+		);
 	
-	return NET_ERROR unless $sock;
-	$sock->send( $command . "\n" );
-	shutdown($sock, 1);
-	my $response = "";
-	$sock->recv($response, 40);
-	$sock->close();
-	chomp($response);
-	return $response;
+		return NET_ERROR unless $sock;
+		$sock->send( $command . "\n" );
+		shutdown($sock, 1);
+		my $response = "";
+		$sock->recv($response, 40);
+		$sock->close();
+		chomp($response);
+		return $response;
+	};
 }
 
 
