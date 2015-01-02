@@ -389,7 +389,7 @@ sub setButtons {
 		this->{refreshButton}->setEnabled(1);
 	} elsif ( $network eq "BROKEN" || $network eq "ERROR" ) {
 		this->{turnoffButton}->setText(this->tr('Wait'));
-		this->{turnoffButton}->setEnabled(1);
+		this->{turnoffButton}->setEnabled(0);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
 	} elsif ( $monitor eq "Enabled" && $network ne "PROTECTED" ) {

@@ -98,15 +98,18 @@ sub http_req
 
 sub get_api_status
 {
-	# return NET_CRIPPLED if default route is 127.0.0.1
-	my @CMD = `netstat -rn`;
-	my @ARR;
-	foreach (@CMD) {
-		if (/^0\.0\.0\.0/) {
-			@ARR = split /\s+/;
-			return NET_CRIPPLED if $ARR[1] =~ /127\.0\.0\.1/;
+	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
+	unless (open ROUTE, '<', '/proc/net/route') {
+		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
+		return NET_BROKEN;
+	}
+	while (<ROUTE>) {
+		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
+			close ROUTE;
+			return NET_CRIPPLED;
 		}
 	}
+	close ROUTE;
 
 	my $reply;
 	if ( $Url_For_Api_Check ne 'none') {
@@ -133,20 +136,22 @@ sub get_api_status
 }
 
 
-
 sub quick_net_status
 {
 	my $net_status = NET_UNKNOWN;
 
-	# return NET_CRIPPLED if default route is 127.0.0.1
-	my @CMD = `netstat -rn`;
-	my @ARR;
-	foreach (@CMD) {
-		if (/^0\.0\.0\.0/) {
-			@ARR = split /\s+/;
-			return NET_CRIPPLED if $ARR[1] =~ /127\.0\.0\.1/;
+	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
+	unless (open ROUTE, '<', '/proc/net/route') {
+		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
+		return NET_BROKEN;
+	}
+	while (<ROUTE>) {
+		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
+			close ROUTE;
+			return NET_CRIPPLED;
 		}
 	}
+	close ROUTE;
 
 	my $sys_virtual_path = "/sys/devices/virtual/net/";
 	my $sys_net_path = "/sys/class/net/";
