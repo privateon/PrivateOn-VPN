@@ -916,8 +916,23 @@ sub setDefaultVpn {
 }
 
 
-################        Deactivate VPN connection       ################
+################     Deactivate VPN / Fix connection    ################
 sub turnOffVpn {
+
+print "\nturnoffButton text = " . this->{turnoffButton}->text . "\n";
+
+	if (this->{turnoffButton}->text eq "Turn off") {
+print "Turn off\n";
+	} elsif (this->{turnoffButton}->text eq "Disable") {
+print "Disable\n";
+	} elsif (this->{turnoffButton}->text eq "No VPN") {
+print "No VPN\n";
+	} elsif (this->{turnoffButton}->text eq "Fix") {
+print "Fix\n";
+	} else {
+print "Other\n";
+	}
+
 	my $status_text = "The VPN connection is deactivating,\n";
 	$status_text .= "Please hold on.\n";
 	setStatusText($status_text);
