@@ -928,7 +928,8 @@ print "Disable\n";
 	} elsif (this->{turnoffButton}->text eq "No VPN") {
 print "No VPN\n";
 	} elsif (this->{turnoffButton}->text eq "Fix") {
-print "Fix\n";
+		fixConnection();
+		return 0;
 	} else {
 print "Other\n";
 	}
@@ -1006,6 +1007,88 @@ print "Other\n";
 	setStatusText($status_text);
 	
 	this->{turnoffButton}->setEnabled(0);
+	return 0;
+}
+
+
+sub fixConnection {
+	my $pty = this->{pty};
+
+	my $status_text = "Fixing network connection\n";
+	setStatusText($status_text);
+
+	# restart NetworkManager if not running
+	if ( system("/usr/sbin/service NetworkManager status >/dev/null 2>&1") ) {
+		system("/usr/sbin/service NetworkManager stop >/dev/null 2>&1");
+		system("/usr/sbin/service NetworkManager start >/dev/null 2>&1");
+		sleep(1);
+		if ( system("/usr/sbin/service NetworkManager status >/dev/null 2>&1") ) {
+			$status_text .= "NetworkManager restart failed\n";
+		} else {
+			$status_text .= "NetworkManager restarted\n";
+		}
+		setStatusText($status_text);
+	}
+
+	# find non-virtual network interfaces
+	my $sys_net_path = "/sys/class/net/";
+	my $net;
+	my @interface_array;
+	unless (opendir $net, $sys_net_path) {
+		print "ERROR: Could not open directory: " . $sys_net_path . " Reason: " . $!;
+	} else {
+		while (my $file = readdir($net)) {
+			next unless (-d $sys_net_path."/".$file);
+			# make readlink errors nonfatal
+			eval {
+				my $value = readlink($sys_net_path."/".$file);
+				if (defined($value) && $value =~ /pci/i) {
+					# directory is read in reverse order, so push to beginning of array
+					unshift(@interface_array, $file);
+				}
+			};
+		}
+		closedir $net;
+	}
+
+	# if no interfaces found, use default list
+	if ( scalar(@interface_array) == 0 ) {
+		$interface_array[0] = "enp1s0";
+		$interface_array[1] = "wlp2s0";
+		$status_text .= "No interfaces found, using default list\n";
+		setStatusText($status_text);
+	}
+
+	foreach my $interface (@interface_array) {
+		try {
+			$pty->spawn("echo \"Bringing up interface $interface\" ; " .
+			   "/usr/bin/nmcli conn up ifname $interface >/dev/null && " .
+			   "echo \"Interface $interface has been brought up\"");
+
+			# wait up to 15 sec for connection to be brought up
+			sleep(1);
+			for (my $i = 0; $i < 15; $i++) {
+				if (!isVpnActive()) { last; }
+				sleep(1);
+			}
+
+			my $pid = $pty->pid();
+			if ($pty->is_active and defined $pid) {
+				# write pty to status area before continuing
+				updateStatus();
+				system("/usr/bin/kill -9 $pid");
+				$pty->close();
+				$pty = IO::Pty::Easy->new();
+				this->{pty} = $pty;
+				$status_text .= "Interface $interface timed out\n";
+				setStatusText($status_text);
+				print "Killed the previous subprocess, pid: ",$pid."\n" if DEBUG > 0;
+			}
+		} catch {
+			warn "caught error: $_\n";
+		};
+	}
+
 	return 0;
 }
 
