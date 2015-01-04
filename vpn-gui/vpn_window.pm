@@ -454,10 +454,10 @@ sub getComboboxCountries {
 				this->{serverCountryCombo}->setCurrentIndex($i);
 				this->{id_country} = $i;
 			} else {
-				$i ++;
+				$i++;
 			}
 		} else {
-			$i ++;
+			$i++;
 		}
 		push @country, $c;
 	}}
@@ -485,10 +485,10 @@ sub getComboboxCountries {
 				this->{serverCountryCombo}->setCurrentIndex($i);
 				this->{id_country} = $i;
 			} else {
-				$i ++;
+				$i++;
 			}
 		} else {
-			$i++
+			$i++;
 		}
 		# These can be distinguished by the '+' in the $c
 		push @country, $c;
@@ -510,7 +510,7 @@ sub getComboboxCountries {
 				this->{serverCountryCombo}->setCurrentIndex($i);
 				this->{id_country} = $i;
 			} else {
-				$i ++;
+				$i++;
 			}
 		} else {
 			$i++
@@ -721,13 +721,13 @@ sub updateDefaultVpn {
 					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
 					# wait for connection to close
 					sleep(1);
-					for (my $i = 0; $i < 10; $i ++) {
+					for (my $i = 0; $i < 10; $i++) {
 						if (!isVpnActive()) { last; }
 						sleep 1;
 					}
 				} catch {
 					warn "caught error: $_\n";
-				}
+				};
 			}
 		}
 	} elsif ($api_status == NET_CRIPPLED) {
@@ -843,14 +843,14 @@ sub setDefaultVpn {
 				$uuid = $1;
 			} elsif (/^remote=(\S+)/) {
 				$remote = $1;
-				} else {
-					next;
-				}
+			} else {
+				next;
 			}
-			close IN;
-			try {
-				$pty->spawn("/usr/bin/nmcli conn up uuid $uuid >/dev/null && echo \"VPN activation successful\"");
-			} catch {
+		}
+		close IN;
+		try {
+			$pty->spawn("/usr/bin/nmcli conn up uuid $uuid >/dev/null && echo \"VPN activation successful\"");
+		} catch {
 			warn "caught error: $_\n";
 			$return_code = 2;
 		};
@@ -989,13 +989,13 @@ print "Other\n";
 				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
 				# wait for connection to close
 				sleep(1);
-				for (my $i = 0; $i < 10; $i ++) {
+				for (my $i = 0; $i < 10; $i++) {
 					if (!isVpnActive()) { last; }
 					sleep 1;
 				}
 			} catch {
 				warn "caught error: $_\n";
-			}
+			};
 		}
 	}
 	system("pkill -9 openvpn");
