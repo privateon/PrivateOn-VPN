@@ -28,6 +28,7 @@ use Fcntl qw(:flock);
 use File::Path qw(make_path);
 use File::stat;
 use HTTP::Lite;
+use IO::Interface::Simple;
 use JSON qw(decode_json);
 use JSON::backportPP;
 use No::Worries::PidFile qw(pf_set pf_unset);
@@ -155,8 +156,8 @@ sub quick_net_status
 
 	my $sys_virtual_path = "/sys/devices/virtual/net/";
 	my $sys_net_path = "/sys/class/net/";
-	my @net_dir_array = ();
 	my $net;
+	my @interface_array;
 
 	unless (opendir $net, $sys_virtual_path) {
 		$ctx->log(error => "Could not open directory: " . $sys_virtual_path . " Reason: " . $!);
@@ -165,35 +166,49 @@ sub quick_net_status
 	while (my $file = readdir($net)) {
 		return NET_PROTECTED if ($file =~ /^tun[0-9]+/);
 	}
+	closedir $net;
 
 	unless (opendir $net, $sys_net_path) {
 		$ctx->log(error => "Could not open directory: " . $sys_net_path . " Reason: " . $!);
 		return NET_BROKEN;
 	}
 	while (my $file = readdir($net)) {
-		next unless (-d $sys_net_path."/".$file);
-		push @net_dir_array, $sys_net_path."/".$file;
+		next unless (-d $sys_net_path.$file);
+		# skip loopback interface
+		next if ($file eq "lo");
+		# directory is read in reverse order, so push to beginning of array
+		unshift(@interface_array, $file);
 	}
 	closedir $net;
 
-	foreach my $dir (@net_dir_array) {
-		next unless (-e $dir."/address");
-		open my $address, "$dir/address";
+	foreach my $interface (@interface_array) {
+		# skip interfaces that do not have a hardware address
+		next unless (-e $sys_net_path.$interface."/address");
+		open my $address, $sys_net_path.$interface."/address";
 		my @lines = <$address>;
 		close $address;
 		next if ($lines[0] =~ /00\:00\:00\:00\:00\:00/);
 		next unless ($lines[0]);
 
-		next unless (-e $dir."/operstate");
-		open my $operstate, "$dir/operstate";
+		next unless (-e $sys_net_path.$interface."/operstate");
+		open my $operstate, $sys_net_path.$interface."/operstate";
 		my @line = <$operstate>;
 		close $operstate;
 		next if ($line[0] =~ /^unknown/);
 		if ($line[0] =~ /^down/) {
 			$net_status = NET_OFFLINE;
 			next;
+		} elsif ($line[0] =~ /^up/) {
+			# check that the interface has an IP address
+			my $if = IO::Interface::Simple->new($interface);
+			if ( defined($if) && defined($if->address) ) {
+				if ( $if->address =~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/ ) {
+					return NET_UNPROTECTED;
+				}
+			}
+			# otherwise this interface is offline
+			$net_status = NET_OFFLINE;
 		}
-		return NET_UNPROTECTED if ($line[0] =~ /^up/);
 	}
 	return $net_status;
 }

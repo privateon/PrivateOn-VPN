@@ -47,11 +47,12 @@ make install
 ### Step 5. 	Install more dependencies
 cpan install AnyEvent::Fork::RPC
 cpan install File::Pid
-cpan install No::Worries::PidFile
 cpan install HTTP::Lite
-cpan install UI::Dialog::Backend::KDialog
-cpan install List::MoreUtils
+cpan install IO::Interface::Simple
 cpan install IO::Pty::Easy
+cpan install List::MoreUtils
+cpan install No::Worries::PidFile
+cpan install UI::Dialog::Backend::KDialog
 
 
 ### Step 6a or 6b. 	Install service manifests
