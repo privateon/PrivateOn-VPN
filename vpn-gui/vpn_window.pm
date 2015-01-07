@@ -26,10 +26,12 @@ use QtCore4::slots
 	updateDefaultVpn => [],
 	updateDefaultVpnResume => [],
 	turnOffVpn => [],
+	fixConnectionResume => [],
 	updateStatus => [];
 use File::Basename;
 use File::Copy qw(copy);
 use File::Path qw(make_path);
+use IO::Interface::Simple;
 use IO::Pty::Easy;
 use Net::DBus qw(:typing);
 use Try::Tiny;
@@ -42,7 +44,7 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState take
 use constant {
 	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
 	INI_FILE => "/opt/PrivateOn-VPN/vpn-default.ini",
-	DEBUG => 1,
+	DEBUG => 2,
 	ENABLE_VPN => 1,
 	ENABLE_DUAL_VPN => 1,
 	ENABLE_TOR_VPN => 0
@@ -79,8 +81,12 @@ sub NEW {
 	this->connect(this->{buttonTimer}, SIGNAL('timeout()'), SLOT('reenableRefreshButton()'));
 
 	# Resume timer to continue processing after vpn disabled
-	this->{resumeTimer} = Qt::Timer(this);
-	this->connect(this->{resumeTimer}, SIGNAL('timeout()'), SLOT('updateDefaultVpnResume()'));
+	this->{resumeVpnTimer} = Qt::Timer(this);
+	this->connect(this->{resumeVpnTimer}, SIGNAL('timeout()'), SLOT('updateDefaultVpnResume()'));
+
+	# Resume timer to continue processing after displaying starting text
+	this->{resumeFixTimer} = Qt::Timer(this);
+	this->connect(this->{resumeFixTimer}, SIGNAL('timeout()'), SLOT('fixConnectionResume()'));
 
 	# initialize main widget and make it transparent
 	my $centralWidget = Qt::Widget();
@@ -296,7 +302,6 @@ sub setStatusText {
 	my $cursor = $status->textCursor;
 	$cursor->movePosition(Qt::TextCursor::End());
 	$status->setTextCursor($cursor);
-	
 	$status->repaint();
 }
 
@@ -410,10 +415,6 @@ this->{turnoffButton}->setText(this->tr('Unknown'));
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
 	}
-
-# temporary debug code
-print "\n\tsetButtons - monitor = $monitor\t task = $task\t network = $network\n";
-
 }
 
 
@@ -611,6 +612,7 @@ sub setUserInfo {
 	return 0;
 }
 
+
 sub getUserInfo {
 	my %userInfo = ();
 	$userInfo{code} = 0;
@@ -735,14 +737,14 @@ sub updateDefaultVpn {
 	}
 
 	# return to QT event loop for 4 seconds
-	print "Start resume timer\n" if DEBUG > 0;
-	this->{resumeTimer}->start(2000);
+	print "Start resume vpn timer\n" if DEBUG > 0;
+	this->{resumeVpnTimer}->start(2000);
 }
 
 
 sub updateDefaultVpnResume {
 	system("pkill -9 openvpn");
-	this->{resumeTimer}->stop;
+	this->{resumeVpnTimer}->stop;
 	print "Resume activation of VPN\n" if DEBUG > 0;
 	my $status_text;
 
@@ -918,9 +920,6 @@ sub setDefaultVpn {
 
 ################     Deactivate VPN / Fix connection    ################
 sub turnOffVpn {
-
-print "\nturnoffButton text = " . this->{turnoffButton}->text . "\n";
-
 	if (this->{turnoffButton}->text eq "Turn off") {
 print "Turn off\n";
 	} elsif (this->{turnoffButton}->text eq "Disable") {
@@ -1012,10 +1011,7 @@ print "Other\n";
 
 
 sub fixConnection {
-	my $pty = this->{pty};
-
 	my $status_text = "Fixing network connection\n";
-	setStatusText($status_text);
 
 	# restart NetworkManager if not running
 	if ( system("/usr/sbin/service NetworkManager status >/dev/null 2>&1") ) {
@@ -1027,8 +1023,22 @@ sub fixConnection {
 		} else {
 			$status_text .= "NetworkManager restarted\n";
 		}
-		setStatusText($status_text);
 	}
+	setStatusText($status_text);
+	
+	# return to QT event loop for 0.5 seconds
+	print "Start resume fix timer\n" if DEBUG > 0;
+	this->{resumeFixTimer}->start(500);
+}
+
+
+sub fixConnectionResume {
+	this->{resumeFixTimer}->stop;
+	print "Resume fixing of connection\n" if DEBUG > 0;
+
+	my $pty = this->{pty};
+	my $status = this->{statusOutput};
+	my $status_text = $status->toPlainText();
 
 	# find non-virtual network interfaces
 	my $sys_net_path = "/sys/class/net/";
@@ -1063,17 +1073,17 @@ sub fixConnection {
 		try {
 			$pty->spawn("echo \"Bringing up interface $interface\" ; " .
 			   "/usr/bin/nmcli conn up ifname $interface >/dev/null && " .
-			   "echo \"Interface $interface has been brought up\"");
+			   "echo \"IP address assigned to $interface\"");
 
 			# wait up to 15 sec for connection to be brought up
-			sleep(1);
 			for (my $i = 0; $i < 15; $i++) {
-				if (!isVpnActive()) { last; }
 				sleep(1);
+				unless ($pty->is_active) { last; }
+				print " (fix)" if DEBUG > 1;
 			}
 
 			my $pid = $pty->pid();
-			if ($pty->is_active and defined $pid) {
+			if ($pty->is_active && defined $pid) {
 				# write pty to status area before continuing
 				updateStatus();
 				system("/usr/bin/kill -9 $pid");
@@ -1082,8 +1092,18 @@ sub fixConnection {
 				this->{pty} = $pty;
 				$status_text .= "Interface $interface timed out\n";
 				setStatusText($status_text);
-				print "Killed the previous subprocess, pid: ",$pid."\n" if DEBUG > 0;
+				print "\nInterface $interface timed out. Killed the previous subprocess, pid: ",$pid."\n" if DEBUG > 0;
 			}
+			
+			# end loop if interface has an IP address
+			my $if = IO::Interface::Simple->new($interface);
+			if ( defined($if) && defined($if->address) ) {
+				if ( $if->address =~ /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/ ) {
+					print "\nInterface $interface fixed. Has IP address " . $if->address . "\n" if DEBUG > 0;
+					last;
+				}
+			}
+			print "Interface $interface did not get a valid IP address\n" if DEBUG > 1;
 		} catch {
 			warn "caught error: $_\n";
 		};
@@ -1117,7 +1137,7 @@ sub updateStatus {
 	if ($active_flag) {
 		this->{internalTimer}->start(1000);
 		$last_pty_read = $current_time;
-		print "#" if DEBUG > 0;
+		print "#" if DEBUG > 1;
 	} else {
 		if ( $current_time - $last_pty_read > 2*60 ) { # keep text for 2 min
 			my $api_status = showNetStatus();
@@ -1132,7 +1152,7 @@ sub updateStatus {
 		} elsif ( $current_time - $last_pty_read > 60 ) { # slow down refresh even more after 1 minute
 			this->{internalTimer}->start(10*1000);
 		}
-		print "." if DEBUG > 0;
+		print "." if DEBUG > 1;
 	}
 
 	my $current_status = getNetStatus();
