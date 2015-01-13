@@ -444,6 +444,7 @@ sub popup_dialog
 				last;
 			}
 		}
+		close(WHO);
 		# if who parse fails, use username with ID 1000
 		if (not defined($username)) {
 			$username = getpwuid(1000);
