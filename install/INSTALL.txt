@@ -21,6 +21,7 @@ zypper install git-core
 ### Step 3.	Install dependencies for PrivateOn-VPN package
 zypper install perl-AnyEvent
 zypper install perl-qt4
+zypper install perl-POE
 zypper install thttpd dnsmasq xhost
 
 
@@ -45,6 +46,7 @@ make install
 
 
 ### Step 5. 	Install more dependencies
+cpan install AnyEvent::Impl::POE
 cpan install AnyEvent::Fork::RPC
 cpan install File::Pid
 cpan install HTTP::Lite

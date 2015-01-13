@@ -35,12 +35,14 @@ use No::Worries::PidFile qw(pf_set pf_unset);
 use Try::Tiny;
 use UI::Dialog::Backend::KDialog;
 
+use AnyEvent::Impl::POE;
 use AnyEvent;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
 use AnyEvent::Log;
 use AnyEvent::Fork;
 use AnyEvent::Fork::RPC;
+use POE;
 
 use constant {
 	PATH          => "/opt/PrivateOn-VPN/",
@@ -80,7 +82,7 @@ my $Current_Update_Time = 0;    # used to store epoch time of last network statu
 my $Previous_Status = 999;      # used to store status result of previous iteration for detecting change 
 my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API (set in run_once())
 
-my $cv = AE::cv;                # Event loop object
+my $cv = AnyEvent->condvar;     # Event loop object
 my $ctx;                        # global AE logging context object
 
 
