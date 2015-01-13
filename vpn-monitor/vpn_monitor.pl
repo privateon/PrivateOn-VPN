@@ -84,6 +84,10 @@ my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API
 
 my $cv = AnyEvent->condvar;     # Event loop object
 my $ctx;                        # global AE logging context object
+my $Detect_Change_Timer;        # Timer for periodic network status check
+my $Temporary_Disable_Timer;    # Timer for re-enabling monitor after GUI tasks
+my $TCP_Server_Handle;          # TCP server handle
+my %TCP_Server_Connections;     # Keep TCP server alive after initialization
 
 
 ################	Network State subroutines	################
@@ -312,7 +316,7 @@ sub get_previous_status_from_file
 
 sub set_current_task_to_idle
 {
-	# restore task to "temporary" if take-a-break/timer2 still running
+	# restore task to "temporary" if Temporary_Disable_Timer still running
 	if ($Temporary_Disable) {
 		$Current_Task = "temporary";
 	} else {
@@ -812,7 +816,7 @@ sub retry_vpn_on_error
 
 ################     Detect Change in Network State	################
 
-sub refresh
+sub detect_change
 {
 	if ( not defined($Monitor_Enabled) or $Monitor_Enabled == 0 or $Temporary_Disable == 1) {
 		return;
@@ -929,36 +933,32 @@ sub run_once
 		}
 		close $vpn_ini;
 	}
-	
+
 	# read API check URL from inifile to global variable
 	read_api_url_from_inifile();
-	
+
+	# Start periodic network status checking
+	$Detect_Change_Timer = AnyEvent->timer(
+		after => 60, # run after 60 sec the first time
+		interval => 60, # then every minute
+		cb => \&detect_change,
+	);
+
 	if (defined $ARGV[0]) { spawn_undo_crippling(); };
 }
+
 
 # run initialization code
 run_once();
 
 
-my $timer;
-$timer = AnyEvent->timer(
-	after => 60, # run after 60 sec the first time
-	interval => 60, # then every minute
-	cb => \&refresh,
-);
-
-
 ################		TCP server		################
-
-my %connections;
-my $handle;
-my $timer2;
 
 tcp_server(
 	IPC_HOST, IPC_PORT, sub {
 	my ($fh) = @_;
-	
-	$handle = AnyEvent::Handle->new(
+
+	$TCP_Server_Handle = AnyEvent::Handle->new(
 		fh => $fh,
 		poll => 'r',
 		on_read => sub {
@@ -982,8 +982,8 @@ tcp_server(
 				$Current_Task = "temporary";
 
 				# destroy timer / re-enable crippling after 1 minute
-				undef $timer2; 
-				$timer2 = AnyEvent->timer(
+				undef $Temporary_Disable_Timer; 
+				$Temporary_Disable_Timer = AnyEvent->timer(
 					after => 60, 
 					cb => sub {
 						$Temporary_Disable = 0;
@@ -1056,11 +1056,11 @@ tcp_server(
 				close VPN_INI;
 
 				# restart timer
-				undef $timer; # destroy current timer
-				$timer = AnyEvent->timer(
+				undef $Detect_Change_Timer; # destroy current timer
+				$Detect_Change_Timer = AnyEvent->timer(
 					after => 40, # run after 40 sec the first time
 					interval => 60, # every minute
-					cb => \&refresh,
+					cb => \&detect_change,
 				);
 				$Monitor_Enabled = 1;
 				$self->push_write("ok - monitor enabled\n");
@@ -1124,7 +1124,7 @@ tcp_server(
 			$hdl->destroy;
 		}
 	);
-	$connections{$handle} = $handle; # keep it alive.
+	$TCP_Server_Connections{$TCP_Server_Handle} = $TCP_Server_Handle; # keep it alive.
 	return;
 	}
 );
