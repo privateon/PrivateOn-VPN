@@ -837,6 +837,7 @@ sub detect_change
 	if ($Current_Status == NET_UNPROTECTED and $tmp_previous != NET_CRIPPLED) {
 		# spawn_retry_vpn calls retry_vpn_callback when it finishes
 		spawn_retry_vpn();
+		return(0);
 	}
 
 	# update Current_Task in case callbacks failed to be called
