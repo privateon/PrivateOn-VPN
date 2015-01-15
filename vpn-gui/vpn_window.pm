@@ -920,17 +920,37 @@ sub setDefaultVpn {
 
 ################     Deactivate VPN / Fix connection    ################
 sub turnOffVpn {
+
+	# network status = PROTECTED or monitor = Disabled
 	if (this->{turnoffButton}->text eq "Turn off") {
-print "Turn off\n";
+		# continue to rest of subroutines
+
+	# network status = UNPROTECTED and monitor = Enabled
 	} elsif (this->{turnoffButton}->text eq "Disable") {
-print "Disable\n";
+		removeDispatcher();
+		disableMonitor();
+		$status_text = "Monitor disabled.\n";
+		setStatusText($status_text);
+		return 0;
+
+	# network status = CRIPPLED
 	} elsif (this->{turnoffButton}->text eq "No VPN") {
-print "No VPN\n";
+		undoCrippling();
+		$status_text = "Safemode deactivated.\n";
+		setStatusText($status_text);
+		return 0;
+
+	# network status = OFFLINE
 	} elsif (this->{turnoffButton}->text eq "Fix") {
 		fixConnection();
 		return 0;
+
+	# error cases
 	} else {
-print "Other\n";
+		# disable NetworkManager to force restart
+		system("/usr/sbin/service NetworkManager stop >/dev/null 2>&1");
+		fixConnection();
+		return 0;
 	}
 
 	my $status_text = "The VPN connection is deactivating,\n";
