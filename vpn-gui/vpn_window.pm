@@ -26,6 +26,7 @@ use QtCore4::slots
 	updateDefaultVpn => [],
 	updateDefaultVpnResume => [],
 	turnOffVpn => [],
+	turnOffVpnResume => [],
 	fixConnectionResume => [],
 	updateStatus => [];
 use File::Basename;
@@ -71,7 +72,7 @@ sub NEW {
 	this->{vpnType} = 'vpn';
 	this->{protocol} = 'tcp';
 
-	# timer implementation
+	# update statut text timer
 	this->{internalTimer} = Qt::Timer(this);  # create internal timer
 	this->connect(this->{internalTimer}, SIGNAL('timeout()'), SLOT('updateStatus()'));
 	this->{internalTimer}->start(5000);	  # emit signal every 5 second
@@ -83,6 +84,10 @@ sub NEW {
 	# Resume timer to continue processing after vpn disabled
 	this->{resumeVpnTimer} = Qt::Timer(this);
 	this->connect(this->{resumeVpnTimer}, SIGNAL('timeout()'), SLOT('updateDefaultVpnResume()'));
+
+	# Resume timer to continue processing after displaying starting text
+	this->{resumeTurnOffTimer} = Qt::Timer(this);
+	this->connect(this->{resumeTurnOffTimer}, SIGNAL('timeout()'), SLOT('turnOffVpnResume()'));
 
 	# Resume timer to continue processing after displaying starting text
 	this->{resumeFixTimer} = Qt::Timer(this);
@@ -408,9 +413,7 @@ sub setButtons {
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(1);
 	} else {
-# temporary debug code
-this->{turnoffButton}->setText(this->tr('Unknown')); 
-#		this->{turnoffButton}->setText(this->tr('Turn off'));
+		this->{turnoffButton}->setText(this->tr('Turn-off'));
 		this->{turnoffButton}->setEnabled(1);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
@@ -929,15 +932,17 @@ sub turnOffVpn {
 	} elsif (this->{turnoffButton}->text eq "Disable") {
 		removeDispatcher();
 		disableMonitor();
-		$status_text = "Monitor disabled.\n";
-		setStatusText($status_text);
+		setStatusText("Monitor disabled.\n");
+		this->{turnoffButton}->setEnabled(0);
 		return 0;
 
 	# network status = CRIPPLED
 	} elsif (this->{turnoffButton}->text eq "No VPN") {
+		removeDispatcher();
+		disableMonitor();
 		undoCrippling();
-		$status_text = "Safemode deactivated.\n";
-		setStatusText($status_text);
+		setStatusText("Safemode deactivated.\n");
+		this->{turnoffButton}->setEnabled(0);
 		return 0;
 
 	# network status = OFFLINE
@@ -955,7 +960,6 @@ sub turnOffVpn {
 
 	my $status_text = "The VPN connection is deactivating,\n";
 	$status_text .= "Please hold on.\n";
-	setStatusText($status_text);
 
 	takeABreak();
 	removeDispatcher();
@@ -988,30 +992,69 @@ sub turnOffVpn {
 			push @active_conns, $1;
 		}
 	}
-	
-	# failover command if above gave no results
-	if (!@active_conns) {
-		@active_lines = `/usr/bin/nmcli conn`;
-		foreach my $conn (@active_lines) {
-			if ($conn =~ /(\S+)/) {
-				push @active_conns, $1;
-			}
-		}
+
+	# save list for use after resume
+	if (@active_conns) {
+		this->{active_conns} = \@active_conns;
+	} else {
+		if (defined this->{active_conns}) { undef this->{active_conns} };
+		$status_text = "Forcing VPN deactivation,\n";
+		$status_text .= "This may take a few seconds.\n";
 	}
-	
-	my $vpn_connection = getVpnConnection(getConnections());
+
+	setStatusText($status_text);
+	this->{turnoffButton}->setEnabled(0);
+
+	# return to QT event loop for 0.5 seconds
+	print "Start resume deactivating VPN timer\n" if DEBUG > 0;
+	this->{resumeTurnOffTimer}->start(500);
+}
+
+
+sub turnOffVpnResume {
+	this->{resumeTurnOffTimer}->stop;
+	print "Resume deactivating VPN\n" if DEBUG > 0;
+
 	my $pty = this->{pty};
+	my @active_conns = ();
+	my $failover_mode = 0;
+	if ( (defined this->{active_conns}) && (ref(this->{active_conns}) eq 'ARRAY') ) {
+		@active_conns = @{this->{active_conns}};
+		undef this->{active_conns};
+	} else {
+		$failover_mode = 1;
+	}
+
+	my $vpn_connection = getVpnConnection(getConnections());
 	foreach my $conn (@$vpn_connection) {
 		my $vpn_name = $conn->{connection}->{id};
-		if ($vpn_name ~~ @active_conns) {
+		if ( $failover_mode  || ($vpn_name ~~ @active_conns) ) {
 			try {
 				print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-				$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
-				# wait for connection to close
-				sleep(1);
-				for (my $i = 0; $i < 10; $i++) {
-					if (!isVpnActive()) { last; }
-					sleep 1;
+				if (!$failover_mode) {
+					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
+
+					# wait for connection to close
+					for (my $i = 0; $i < 10; $i++) {
+						sleep 1;
+						if (!isVpnActive()) { last; }
+					}
+				} else {
+					# Don't collect the error output since failover mode produces a lot of it
+					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null 2>&1 && echo \"$vpn_name deactivated\"");
+
+					# wait up to 4 sec for connection to be brought down
+					for (my $i = 0; $i < 4; $i++) {
+						sleep(1);
+						unless ($pty->is_active) { last; }
+					}
+
+					# restart pty if it is still active
+					if ($pty->is_active) {
+						$pty->close();
+						$pty = IO::Pty::Easy->new();
+						this->{pty} = $pty;
+					}
 				}
 			} catch {
 				warn "caught error: $_\n";
@@ -1019,13 +1062,16 @@ sub turnOffVpn {
 		}
 	}
 	system("pkill -9 openvpn");
-	forceRefresh();	
+	forceRefresh();
 	this->{internalTimer}->start(5*1000);
 
-	$status_text = "The VPN connection is deactivated.\n";
-	setStatusText($status_text);
+	if ($failover_mode) {
+		my $status = this->{statusOutput};
+		my $status_text = $status->toPlainText();
+		$status_text = "The VPN connection is deactivated.\n";
+		setStatusText($status_text);
+	}
 	
-	this->{turnoffButton}->setEnabled(0);
 	return 0;
 }
 
@@ -1045,7 +1091,8 @@ sub fixConnection {
 		}
 	}
 	setStatusText($status_text);
-	
+	this->{turnoffButton}->setEnabled(0);
+
 	# return to QT event loop for 0.5 seconds
 	print "Start resume fix timer\n" if DEBUG > 0;
 	this->{resumeFixTimer}->start(500);
