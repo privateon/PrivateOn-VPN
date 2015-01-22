@@ -25,7 +25,7 @@ cd .. && \
     cp -p -r vpn-gui vpn-monitor install  privateon-vpn-${VERSION}  && \
     tar -cf privateon-vpn-${VERSION}.tar  privateon-vpn-${VERSION}  && \
     mv privateon-vpn-${VERSION}.tar  ${SOURCES}/  && \
-#    rm -rf privateon-vpn-${VERSION}  && \
+    rm -rf privateon-vpn-${VERSION}  && \
 cd - 1>/dev/null
 
 
