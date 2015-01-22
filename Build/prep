@@ -1,18 +1,39 @@
 #!/bin/bash
-# Written by Kimmo R. M. Hovi <kimmo@fairwarning.fi>
-# Prepare the tarball for rpmbuild. Not needed runtime
+#
+# PrivateOn-VPN -- Because privacy matters.
+#
+# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>
+#
+# Copyright (C) 2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# All rights reserved. Use is subject to license terms.
+#
+
 # Usage:
-# ln -s /path/to/this/dir/privateon-${VERSION}.tar /home/<username>/rpmbuild/SOURCES/
 # . prep
 # <hack away>
-# rpmbuild -ba privateon.spec
+# rpmbuild -v -bb --clean privateon-vpn.spec
+
 
 VERSION=0.9
+SOURCES=/usr/src/packages/SOURCES
+
 cd .. && \
-    rm -rf privateon-${VERSION} privateon-${VERSION}.tar && \
-    mkdir privateon-${VERSION} && \
-    cp -r install  LICENSE  vpn-default.ini  vpn-gui vpn-monitor privateon-${VERSION} && \
-    tar -cf privateon-${VERSION}.tar privateon-${VERSION} && \
-    cp -f privateon-${VERSION}.tar ~/rpmbuild/SOURCES && \
-    rm -rf ~/rpmbuild/{BUILD,BUILDROOT}/privateon-${VERSION}*
-cd -
+    rm -rf privateon-vpn-${VERSION}  && \
+    rm -f ${SOURCES}/privateon-vpn-${VERSION}.tar  && \
+    mkdir privateon-vpn-${VERSION}  && \
+    cp -p LICENSE README.md vpn-default.ini  privateon-vpn-${VERSION}  && \
+    cp -p -r vpn-gui vpn-monitor install  privateon-vpn-${VERSION}  && \
+    tar -cf privateon-vpn-${VERSION}.tar  privateon-vpn-${VERSION}  && \
+    mv privateon-vpn-${VERSION}.tar  ${SOURCES}/  && \
+#    rm -rf privateon-vpn-${VERSION}  && \
+cd - 1>/dev/null
+
+
+if [ -f ${SOURCES}/privateon-vpn-${VERSION}.tar ];
+then
+    echo -n "Created original source for RPM build: "
+    ls ${SOURCES}/privateon-vpn-${VERSION}.tar
+else
+    echo "Error: Failed to create original source for RPM build !"
+    rm -rf ../privateon-vpn-${VERSION}
+fi
