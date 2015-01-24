@@ -14,7 +14,7 @@ Packager:       Tietosuojakone Oy <info@tietosuojakone.fi>
 Version:        0.9
 Release:        1
 Summary:        PrivateOn VPN package
-License:        Open Source
+License:        Artistic-2.0
 Group:          Productivity/Networking/Security
 Url:            http://www.privateon.net
 Source0:        privateon-vpn-0.9.tar
