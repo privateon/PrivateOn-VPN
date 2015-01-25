@@ -1,10 +1,18 @@
+#
+# PrivateOn-VPN -- Because privacy matters.
+#
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# All rights reserved. Use is subject to license terms.
+#
+
+
 [Unit]
 Description=PrivateOn VPN Monitor
 Requires=network.service
 
 [Service]
 Type=forking
-ExecStart=/sbin/startproc -p /var/run/PrivateOn-VPN/vpn-monitor.pid /opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
+ExecStart=/sbin/startproc -p /var/run/PrivateOn/vpn-monitor.pid /opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
 StandardOutput=journal
 StandardError=journal
 Environment=

@@ -1,3 +1,10 @@
+#
+# PrivateOn-VPN -- Because privacy matters.
+#
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# All rights reserved. Use is subject to license terms.
+#
+
 ###
 ### Install instruction for PrivateOn-VPN package
 ###
@@ -59,16 +66,16 @@ cpan install UI::Dialog::Backend::KDialog
 
 ### Step 6a or 6b. 	Install service manifests
 
-## 6a 	for sysV init.d systems
-cp -p /opt/PrivateOn-VPN/install/init.d/vpn-monitor /etc/init.d/vpn-monitor
-ln -s /etc/init.d/vpn-monitor /usr/sbin/rcvpnmonitor
-service vpn-monitor status
+## 6a 	for systemd services
+cp -p /opt/PrivateOn-VPN/install/vpnmonitor.service /etc/systemd/system/vpnmonitor.service
+ln -s service /usr/sbin/rcvpnmonitor
+service vpnmonitor status
 
 	## or ##
 
-## 6b 	for systemd services
-cp -p /opt/PrivateOn-VPN/install/vpnmonitor.service /etc/systemd/system/vpnmonitor.service
-ln -s service /sbin/rcvpnmonitor
+## 6b 	for sysV init.d systems
+cp -p /opt/PrivateOn-VPN/install/init.d/vpnmonitor /etc/init.d/vpnmonitor
+ln -s /etc/init.d/vpnmonitor /usr/sbin/rcvpnmonitor
 service vpnmonitor status
 
 

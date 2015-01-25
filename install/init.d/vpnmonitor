@@ -2,12 +2,12 @@
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
 ### BEGIN INIT INFO
-# Provides:       vpn-monitor
+# Provides:       vpnmonitor
 # Required-Start: $network $remote_fs
 # Required-Stop:  
 # Default-Start:  3 5
