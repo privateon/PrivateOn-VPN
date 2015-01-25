@@ -5,7 +5,7 @@ package vpn_window;
 #
 # Authors: Mikko Rautiainen & Lei Xue     <info@tietosuojakone.fi>
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
@@ -965,7 +965,7 @@ sub turnOffVpn {
 	removeDispatcher();
 	disableMonitor();
 
-	if (getApiStatus() == NET_CRIPPLED || getCripplingStatus(DEBUG)) {
+	if (getCripplingStatus(DEBUG)) {
 		undoCrippling();
 		$status_text = "The VPN connection is deactivated.\n";
 		setStatusText($status_text);
