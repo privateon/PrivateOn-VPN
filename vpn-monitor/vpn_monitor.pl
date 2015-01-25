@@ -22,6 +22,7 @@
 
 use strict;
 use warnings;
+use sigtrap qw(die normal-signals); 
 
 use lib '/opt/PrivateOn-VPN/vpn-monitor/';
 use Fcntl qw(:flock);
@@ -1158,8 +1159,11 @@ $cv->recv;
 
 END {
 	unless ($Skip_Cleanup) {
+		$ctx->log(debug => "PrivateOn VPN-monitor daemon shutting down.") if DEBUG > 0;
 		stop_systemv_logger();
 		# remove pid file
 		pf_unset( PID_FILE );
+		$ctx->log(info => "PrivateOn VPN-monitor daemon stopped.");
+		print("PrivateOn VPN-monitor daemon stopped.");		# print daemon stopped to systemd journal 
 	}
 }
