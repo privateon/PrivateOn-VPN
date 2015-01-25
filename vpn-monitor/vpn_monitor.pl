@@ -4,7 +4,7 @@
 #
 # Author: Mikko Rautiainen <info@tietosuojakone.fi>
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
@@ -31,7 +31,7 @@ use HTTP::Lite;
 use IO::Interface::Simple;
 use JSON qw(decode_json);
 use JSON::backportPP;
-use No::Worries::PidFile qw(pf_set pf_unset);
+use No::Worries::PidFile qw(pf_check pf_set pf_unset);
 use Try::Tiny;
 use UI::Dialog::Backend::KDialog;
 
@@ -80,11 +80,13 @@ my $Current_Task = "idle";      # stores the current forked task, idle if no tas
 my $Current_Status = 999;       # used to cache network status for get_monitor_state responses
 my $Current_Update_Time = 0;    # used to store epoch time of last network status update for cache aging
 my $Previous_Status = 999;      # used to store status result of previous iteration for detecting change 
+my $Skip_Cleanup = 0;           # used to prevent cleanup when process aborted due to other instance running
 my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API (set in run_once())
 
 my $cv = AnyEvent->condvar;     # Event loop object
 my $ctx;                        # global AE logging context object
 my $Detect_Change_Timer;        # Timer for periodic network status check
+my $Lockfile_Handle;            # Keep exclusive lock alive until process exits
 my $Temporary_Disable_Timer;    # Timer for re-enabling monitor after GUI tasks
 my $TCP_Server_Handle;          # TCP server handle
 my %TCP_Server_Connections;     # Keep TCP server alive after initialization
@@ -279,13 +281,18 @@ sub log_net_status
 
 sub get_lock
 {
-	my $lf;
-	unless (open $lf, ">", LOCK_FILE) {
-		my $error_msg = $!;
-		$ctx->log(error => "Process " . $$ . " could not open lockfile " . LOCK_FILE . ": " . $error_msg);
-		die "Cannot open file " . LOCK_FILE . ": " . $error_msg;
+	unless (open $Lockfile_Handle, ">>", LOCK_FILE) {
+		$Skip_Cleanup = 1;
+		$ctx->log(error => "Process " . $$ . " could not open lockfile " . LOCK_FILE . ": " . $!);
+		$ctx->log(error => "$0 is already running. Exiting process " . $$ . ".");
+		die "$0 is already running. Exiting.\n";
 	}
-	flock $lf, LOCK_EX | LOCK_NB or return 0;
+	unless ( flock($Lockfile_Handle, LOCK_EX|LOCK_NB) ) {
+		$Skip_Cleanup = 1;
+		$ctx->log(error => "Process " . $$ . " could not open exclusive lock: " . $!);
+		$ctx->log(error => "$0 is already running. Exiting process " . $$ . ".");
+		die "$0 is already running. Exiting.\n";
+	}
 
 	return 1;
 }
@@ -872,15 +879,23 @@ sub run_once
 	$ctx->log_to_file(LOG_FILE);
 	$ctx->log(info => "PrivateOn VPN-monitor daemon ".VERSION." starting up.");
 
-	# make sure there is only one running script
+	# make sure there is only one instance running
 	return unless get_lock();
 
-	# remove stale / write pid 
+	# write pid if stale or missing
 	if ( -e PID_FILE ) {
-		$ctx->log( info => "Removing stale PID file " . PID_FILE );
-		system( "/usr/bin/rm -f " . PID_FILE );
+		# pf_check returns empty string if pid is OK
+		my $action = 0;
+		eval { $action = pf_check( PID_FILE ); };
+		$ctx->log(debug => "PID check: " . $@) if ($@ && DEBUG > 1);
+		if (length $action) {
+			$ctx->log( info => "Removing stale PID file " . PID_FILE );
+			system( "/usr/bin/rm -f " . PID_FILE );
+			pf_set( PID_FILE );
+		}
+	} else {
+		pf_set( PID_FILE );
 	}
-	pf_set( PID_FILE );
 
 	if ( !-e STATUS_FILE) {
 		my $vpn_ini;
@@ -1142,7 +1157,9 @@ $cv->recv;
 ################		Clean up		################
 
 END {
-	stop_systemv_logger();
-	# remove pid file
-	pf_unset( PID_FILE );
+	unless ($Skip_Cleanup) {
+		stop_systemv_logger();
+		# remove pid file
+		pf_unset( PID_FILE );
+	}
 }
