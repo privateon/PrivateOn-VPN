@@ -29,8 +29,8 @@ set httpd port 2812 and
 
 ##  start and check vpn-monitor
 check process vpn-monitor with pidfile /var/run/PrivateOn/vpn-monitor.pid
-    start program = "service vpnmonitor start" with timeout 60 seconds
-    stop program  = "service vpnmonitor stop"
+    start program = "/usr/sbin/service vpnmonitor start" with timeout 60 seconds
+    stop program  = "/usr/sbin/service vpnmonitor stop"
     if cpu > 60% for 2 cycles then alert
     if cpu > 80% for 5 cycles then restart
     if totalmem > 200.0 MB for 5 cycles then restart
