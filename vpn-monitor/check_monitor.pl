@@ -19,7 +19,7 @@ use Try::Tiny;
 
 use constant {
 	DEBUG   => 2, # verbosity level, 1 is WARNINGs only, 0 is no messages
- 	PIDFILE => '/var/run/vpn-monitor-checker.pid',  
+	PIDFILE => '/var/run/vpn-monitor-checker.pid',  
 	TIMEOUT_SINCE_LAST_START => 20, # seconds since the last start to allow new instance to run
 
 	MAX_CHECK_ITERATIONS => 3, # try to make the system up and running for that many times
