@@ -3,28 +3,24 @@
 # Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 
-# This script, intended to be run from cron, checks that the vpn monitor is up 
-# and starts/restarts it if needed. It can also stop openvpn and restart network
-# if anything is really wrong with them.
+# This script checks that the vpn monitor is up and starts/restarts it if needed. 
+# It can also stop openvpn and restart network if anything is wrong with them.
 
 use strict;
 use warnings;
 
-use Data::Dumper;
-
-use File::Basename;
 use File::Pid;
 use IO::Socket;
 use LWP::UserAgent;
 use Net::Ping;
 use POSIX;
-use Proc::ProcessTable; # zypper install perl-Proc-ProcessTable
+use Proc::ProcessTable;
 use Try::Tiny;
 
 use constant {
 	DEBUG   => 2, # verbosity level, 1 is WARNINGs only, 0 is no messages
  	PIDFILE => '/var/run/vpn-monitor-checker.pid',  
-	TIMEOUT_SINCE_LAST_START => 10, # seconds since the last start to allow new instance to run
+	TIMEOUT_SINCE_LAST_START => 20, # seconds since the last start to allow new instance to run
 
 	MAX_CHECK_ITERATIONS => 3, # try to make the system up and running for that many times
 	
@@ -43,7 +39,7 @@ use constant {
 	MONIT_SERVICE_NAME => 'monit',
 	MONIT_BINARY => '/usr/bin/monit',
 	MONIT_CONFIG => '/etc/monitrc',
-	MONIT_PROCESS_NAME => 'vpn_monitor',
+	MONIT_PROCESS_NAME => 'vpnmonitor',
 
 	DISPATCHER_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
 };
@@ -395,8 +391,11 @@ sub check_api
 	if ($response->is_success) {
 		my $content = $response->decoded_content;
 		$content =~ s/[\s\n]+/ /g;
-		debug(2, 'API check url: success, returned %s.', $content);
-		return $content;
+		debug(2, 'API check url: returned %s.', $content);
+		if ($content =~ /Protected/) {
+			return "protected";
+		}
+		return 0;
 	}
 
 	debug(1, 'WARNING: API check failed.');
@@ -420,7 +419,7 @@ sub find_vpn_gateway
 		my %line;
 		@line{@headers} = @values;
 
-		if ($line{Metric} eq '1' && $line{Mask} eq 'FFFFFFFF') {
+		if ($line{Iface} =~ /^tun\d+$/ && (hex($line{Flags}) & (2 | 4)) && $line{Mask} eq 'FFFFFFFF') {
 			$found_hex = $line{Destination};
 			last;
 		}
@@ -524,6 +523,7 @@ sub erase_dispatcher_file
 
 sub popup_dialog
 {
+	# Depending on your system, the popup may fail to be rendered if this script is run from the command-line.
 	my ($msg) = @_;
 	try {
 		# find user with terminal :0
@@ -658,6 +658,9 @@ sub main
 	}
 
 	if (@popup_messages) {
+		if (monitor_is_running()) {
+			push @popup_messages, 'VPN Monitor is running.';
+		}
 		my $popup_message = join("\n", @popup_messages);
 		popup_dialog($popup_message);
 	}
