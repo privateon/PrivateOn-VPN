@@ -129,5 +129,5 @@ ln -s --RESULT-- /usr/lib/
 ### Step 11. 	After setup works, install and configure monit to guard that the vpn-monitor is always up
 zypper install monit
 cp -p /opt/PrivateOn-VPN/install/monitrc /etc/monitrc
-chmod 0700 /etc/monitrc
+chmod 0600 /etc/monitrc
 systemctl daemon-reload
