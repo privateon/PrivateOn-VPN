@@ -5,12 +5,12 @@
 # Author: Mikko Rautiainen <info@tietosuojakone.fi>
 #         Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
 #
-#  vpn-gui/kill_gui.sh     This script kills an existing instance of the vpn gui
+#  vpn-gui/kill_gui.sh     This script kills any existing instance of the vpn gui
 #
 #   Note: This script must be run with root credentials, preferably using sudo.
 #
