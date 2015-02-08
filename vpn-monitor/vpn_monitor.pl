@@ -226,7 +226,7 @@ sub quick_net_status
 sub reversed_hex_to_octet
 {
 	my $hex = shift;
-	my $octet = join('.', reverse map { hex($_); } (hex =~ /([0-9a-f]{2})/gi));
+	my $octet = join('.', reverse map { hex($_); } ($hex =~ /([0-9a-f]{2})/gi));
 	return $octet;
 }
 
@@ -465,7 +465,7 @@ sub read_api_url_from_inifile
 		$Url_For_Api_Check = 'none';
 		return 1;
 	} elsif ($url =~ /http\:.*/) {
-		$ctx->log(debug => "Using API check URL  $url") if DEBUG > 0;
+		$ctx->log(debug => "Using API check URL $url") if DEBUG > 0;
 		$Url_For_Api_Check = $url;
 		return 0;
 	} else {
@@ -584,92 +584,63 @@ sub stop_systemv_logger
 
 ################	   Cripple subroutines		################
 
+sub add_route_to_vpn_server
+{
+	# get local gateway and active NIC before removing routes 
+	my ($local_gateway_ip, $active_nic) = get_local_gateway_and_nic();
+	unless ( defined $local_gateway_ip && defined $active_nic ) { return 1; };
+
+	# read vpn server ip
+	my $vpn_server_ip;
+	my $vpn_ini;
+	if (open $vpn_ini, "<" . INI_FILE) {
+		while (<$vpn_ini>) {
+			if (/^\s*remote\s*=\s*([1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*)\s*$/) {
+				$vpn_server_ip = $1;
+				last;
+			}
+		}
+		close $vpn_ini;
+	} else {
+		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+		return 1;
+	}
+	unless ( defined $vpn_server_ip) { return 1; };
+
+	# remove old routes to vpn server
+	my $status = 0;
+	my $iteration = 0; # prevent deadlock in case of route error
+	while ( !$status && $iteration < 5 ) {
+		system("/sbin/route del " . $vpn_server_ip . " 2>/dev/null");
+		$status = $? >> 8; # $? >> 8 is the exit status, see perldoc -f system
+		$iteration++;
+	}
+
+	# add route to vpn server so we can retry the vpn without leaving crippled state 
+	system("/sbin/route add " . $vpn_server_ip . " gw " . $local_gateway_ip . " dev " . $active_nic . " 2>/dev/null");
+	$status = $? >> 8; # $? >> 8 is the exit status, see perldoc -f system
+	if ($status) {
+		$ctx->log(error => "Failed to add route, error($status): dest=$vpn_server_ip gw=$local_gateway_ip dev=$active_nic" );
+	}
+
+	return $status;
+}
+
+
 sub redirect_page
 {
+	# redirect web traffic to a static page
 	$ctx->log(warn => "Redirecting all web traffic to warning page" );
-	# redirect the web page to a static page
 
-	# make sure the file exists, set flag otherwise
-	if (!(-e INI_FILE)) {
-		print "File '" . INI_FILE . "' does not exist.\n";
-		goto ROUTE_DEL;
-	}
-
-	# make sure the file is regular (i.e not a dir, fifo,
-	# device file, etc) and is readable, set flag otherwise.
-	if (!(-f INI_FILE) || !(-r INI_FILE)) {
-		print "File '" . INI_FILE . "' is not regular or is not readable.\n";
-		goto ROUTE_DEL;
-	}
-
-	my $MY_IP;
-
-	# read the first 'remote' entry in the file
-	open my $fh, "<", INI_FILE or goto ROUTE_DEL;
-	while (<$fh>) {
-		if (/^\s*remote\s*=\s*([1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*)\s*$/) {
-		$MY_IP = $1;
-		last;
-		}
-	}
-	close $fh;
-
-	goto ROUTE_DEL if !defined($MY_IP);
-
-	my $DEF_ROUTE_NIC;
-
-	# get active NIC
-	my @CMD = `netstat -rn`;
-	my @ARR;
-	foreach (@CMD) {
-		if (/^0\.0\.0\.0/ && $_ !~ m/127\.0\.0\.1/) {
-			@ARR = split /\s+/;
-			$DEF_ROUTE_NIC = $ARR[7];
-		last;
-		}
-	}
-
-	# remove routes to $MY_IP on other interfaces (other than lo)
-	@CMD = `netstat -rn`;
-	my $count = 0;
-	foreach (@CMD) {
-		# skip header (first two lines)
-		if ($count < 2) {
-			$count++;
-			next;
-		}
-		@ARR = split /\s+/;
-		if ($ARR[0] eq $MY_IP && $ARR[7] ne "lo") {
-		system("/sbin/route del " . $MY_IP . " dev " . $_);
-		}
-	}
-
-	# check if a route already exists on active NIC, add route if not.
-	@CMD = `netstat -rn`;
-	$count = 0;
-	my $flag = 1;
-	foreach (@CMD) {
-		# skip header (first two lines)
-		if ($count < 2) {
-			$count++;
-			next;
-		}
-		@ARR = split /\s+/;
-		if ($ARR[0] eq $MY_IP && $ARR[7] eq $DEF_ROUTE_NIC) {
-			$flag = 0;
-		last;
-		}
-	}
-	if ($flag) {
-		system("/sbin/route add " . $MY_IP . " dev " . $DEF_ROUTE_NIC);
-	}
-
-ROUTE_DEL:
+	add_route_to_vpn_server();
+	
 	# delete all default routes
 	my $status = 0;
-	while (!$status) {
+	my $iteration = 0; # prevent deadlock in case of route error
+	while ( !$status && $iteration < 5 ) {
 		system("/sbin/route del default 2>/dev/null");
 		$status = $? >> 8; # $? >> 8 is the exit status, see perldoc -f system
+		$iteration++;
 	}
 
 	# set default route to localhost
@@ -680,20 +651,20 @@ ROUTE_DEL:
 	if (!$status) {
 		# start dnsmasq
 		system("dnsmasq --address=/#/127.0.0.1 --listen-address=127.0.0.1 --bind-interfaces");
-		$flag = 1;
 
 		system("/usr/bin/cp /etc/resolv.conf /etc/resolv.conf.bak");
 		# overwrite resolv.conf
-		open my $fh, ">/etc/resolv.conf" or $flag = 0;
-		if ($flag) {
-			# file open succeeded
+		if (open my $fh, ">", "/etc/resolv.conf") {
 			print $fh "nameserver 127.0.0.1";
 			close $fh;
+		} else {
+			$ctx->log(error => "Could not open /etc/resolv.conf for writing.  Reason: " . $!);
 		}
-		# start httpd here
+
+		# start web server that listens to localhost
 		system("thttpd -r -h localhost -d " . PATH . "vpn-monitor/htdocs");
 	} else {
-		return $status; # exit with the same error code generated by 'route'
+		return $status;
 	}
 
 	$Current_Task = "crippled";
@@ -810,7 +781,7 @@ sub check_crippled
 	# if not crippled, change task to idle or temporary
 	if ( $Current_Task eq "crippled" || $Current_Task eq "uncripling" ) { 
 		set_current_task_to_idle();
-	};
+	}
 
 	return 0;
 }

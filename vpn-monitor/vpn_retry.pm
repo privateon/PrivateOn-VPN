@@ -3,7 +3,7 @@ package vpn_retry;
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
@@ -94,7 +94,8 @@ sub activate_vpn
 	unless (open $vpn_ini, INI_FILE) {
 		$ctx->log(error => "Could not open '" . INI_FILE . "'  Reason: " . $! ." (vpn_retry child)");
 		$ctx->log(error => "Activating failure-mode VPN (vpn_retry child)");
-		return system("/usr/bin/nmcli conn up id vpn-de.nordvpn-tcp >/dev/null 2&1");
+		# use hardcoded default if vpn-default.ini missing or can not be read
+		return system("/usr/bin/nmcli conn up id vpn-de1-nordvpn-udp >/dev/null 2&1");
 	}
 	while (my $line = <$vpn_ini>) {
 		if ($line =~/^id=(\S+)/) {
