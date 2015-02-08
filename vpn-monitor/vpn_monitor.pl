@@ -223,6 +223,63 @@ sub quick_net_status
 }
 
 
+sub reversed_hex_to_octet
+{
+	my $hex = shift;
+	my $octet = join('.', reverse map { hex($_); } (hex =~ /([0-9a-f]{2})/gi));
+	return $octet;
+}
+
+
+sub octet_to_reversed_hex
+{
+	my $octet = shift;
+	my @octet = reverse split /\./, $octet;
+	return sprintf '%02X%02X%02X%02X', @octet;
+}
+
+
+sub get_local_gateway_and_nic
+{
+	unless (open ROUTE, '<', '/proc/net/route') {
+		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
+		return (undef, undef);
+	}
+	chomp(my $firstline = <ROUTE>);
+	my @headers = split /\s+/, $firstline;
+
+	my $found_nic;
+	my $found_hex;
+	while (<ROUTE>) {
+		chomp;
+		next if /^\s*$/;
+		my @values = split /\s+/, $_;
+		my %line;
+		@line{@headers} = @values;
+
+		# if interface is not tun*/lo and entry has Gateway route flag 
+		if ( ($line{Iface} !~ /^(tun\d|lo)$/) && (hex($line{Flags}) & 2) ) {
+			$found_nic = $line{Iface};
+			$found_hex = $line{Gateway};
+			# end search if entry has Host route flag or entry is default route
+			last if (hex($line{Flags}) & 4);
+			last if ($line{Destination} eq '00000000');
+			
+		}
+	}
+	close ROUTE;
+
+	if (!defined $found_nic || !defined $found_hex) {
+		$ctx->log(error => "Could not find local gateway IP");
+		return (undef, undef);
+	}
+	
+	my $ip = reversed_hex_to_octet($found_hex);
+	$ctx->log(debug => "Found local gateway IP: $ip on interface $found_nic") if DEBUG > 1;
+	return ($ip, $found_nic);
+}
+
+
 sub get_monitor_state
 {
 	my $output;
