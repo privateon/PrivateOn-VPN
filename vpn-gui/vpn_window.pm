@@ -57,6 +57,7 @@ use constant {
 	NET_OFFLINE     => 2,
 	NET_CRIPPLED    => 3,
 	NET_BROKEN      => 4,
+	NET_UNCONFIRMED => 5,
 	NET_ERROR       => 99,
 	NET_UNKNOWN     => 100	
 };
@@ -130,8 +131,11 @@ sub NEW {
 	$status->setMaximumHeight(75);
 	this->{statusOutput} = $status;
 
-	# show VPN/network/monitor status and retreieve api_status
+	# show VPN/network/monitor status and retrieve api_status
 	my $api_status = showNetStatus();
+	if ($api_status == NET_UNCONFIRMED) {
+		this->{internalTimer}->start(1000);
+	}
 
 	# set default values to be used if values not found in ini file 
 	my $default_protocol = "tcp";
@@ -315,7 +319,10 @@ sub showNetStatus {
 	my $status_text;
 	my $api_status = getApiStatus();
 
-	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
+	if ($api_status == NET_UNCONFIRMED) {
+		$status_text = "The VPN is up, but the network status is unconfirmed\n";
+	}
+	elsif ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		$status_text = "The network is online\n";
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text = "The network is in safemode\n";
@@ -679,7 +686,7 @@ sub updateDefaultVpn {
 	undoCrippling() if (getCripplingStatus(DEBUG));
 
 	my $api_status = getApiStatus();
-	if ($api_status == NET_PROTECTED) { # i.e. vpn is up
+	if ($api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
 		$status_text = "The VPN connection is deactivating,\n";
 		$status_text .= "Please hold on.\n";
 		setStatusText($status_text);
@@ -1245,6 +1252,9 @@ sub updateStatus {
 			this->{userpassButton}->setEnabled(0);
 			$status_text .= "Network placed in safemode, check VPN settings.\n";
 			$status_text_changed = 1;
+		} elsif ($current_status == NET_UNCONFIRMED && $tmp_previous != NET_UNCONFIRMED) {
+			$status_text .= "Network status is unconfirmed, please wait for status update.\n";
+			$status_text_changed = 1;
 		} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
 			this->{refreshButton}->setEnabled(1);
 			this->{buttonTimer}->stop();
@@ -1281,6 +1291,9 @@ sub updateStatus {
 				$status_text_changed = 1;
 			} elsif ($current_status == NET_UNPROTECTED) {
 				$status_text .= "Network connection recovered\nThe VPN is down\n";
+				$status_text_changed = 1;
+			} elsif ($current_status == NET_UNCONFIRMED) {
+				$status_text .= "Network connection recovered\nThe network status is still unconfirmed\n";
 				$status_text_changed = 1;
 			}
 		}

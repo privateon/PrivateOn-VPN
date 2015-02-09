@@ -28,7 +28,6 @@ use lib '/opt/PrivateOn-VPN/vpn-monitor/';
 use Fcntl qw(:flock);
 use File::Path qw(make_path);
 use File::stat;
-use HTTP::Lite;
 use IO::Interface::Simple;
 use JSON qw(decode_json);
 use JSON::backportPP;
@@ -43,6 +42,7 @@ use AnyEvent::Socket;
 use AnyEvent::Log;
 use AnyEvent::Fork;
 use AnyEvent::Fork::RPC;
+use AnyEvent::HTTP;
 use POE;
 
 use constant {
@@ -63,6 +63,7 @@ use constant {
 	NET_OFFLINE     => 2,
 	NET_CRIPPLED	=> 3,
 	NET_BROKEN	=> 4,
+	NET_UNCONFIRMED => 5,
 	NET_ERROR	=> 99,
 	NET_UNKNOWN	=> 100
 };
@@ -72,6 +73,11 @@ use constant {
 	IPC_PORT	=> 44244
 };
 
+use constant {
+	API_CHECK_INTERVAL => 5,
+	API_WAIT_TIMEOUT   => 0.5,
+	API_CHECK_TIMEOUT  => 5,
+};
 
 ################	  Package-Wide Globals		################
 
@@ -87,6 +93,7 @@ my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API
 my $cv = AnyEvent->condvar;     # Event loop object
 my $ctx;                        # global AE logging context object
 my $Detect_Change_Timer;        # Timer for periodic network status check
+my $Api_Check_Timer;            # Timer for periodic API status check
 my $Lockfile_Handle;            # Keep exclusive lock alive until process exits
 my $Temporary_Disable_Timer;    # Timer for re-enabling monitor after GUI tasks
 my $TCP_Server_Handle;          # TCP server handle
@@ -95,56 +102,88 @@ my %TCP_Server_Connections;     # Keep TCP server alive after initialization
 
 ################	Network State subroutines	################
 
-sub http_req
+sub http_req_async
 {
 	my $url = shift;
+	$Current_Status = NET_UNCONFIRMED;
+	$Current_Update_Time = time();
+	update_status_file($Current_Status);
+	http_get $url, timeout => API_CHECK_TIMEOUT, sub {
+		my ($data, $headers) = @_;
+		return NET_CRIPPLED if $data =~ /<meta name="flag" content="1"\/>/g;
+		my $reply = decode_json($data);
+		my $status = $reply->{'status'};
+		if ($status eq 'Unprotected') { 
+			$Current_Status = NET_UNPROTECTED; 
+		}
+		elsif ($status eq 'Protected') { 
+			$Current_Status = NET_PROTECTED; 
+		}
+		else {
+			$Current_Status = NET_UNKNOWN;
+		}
+		$Current_Update_Time = time();
+		update_status_file($Current_Status);
+	};
 
-	my $http = HTTP::Lite->new;
-	my $req = $http->request($url) or return;
+	# We will wait for API_WAIT_TIMEOUT seconds so that if everything is allright,
+	# some defined status is returned. If API does not reply in API_WAIT_TIMEOUT
+	# this function will return NET_UNCONFIRMED.
 
-	return $http->body();
+	select undef, undef, undef, API_WAIT_TIMEOUT;
+	return $Current_Status;
 }
 
+sub tun_interface_exists
+{
+	my $sys_virtual_path = "/sys/devices/virtual/net/";
+	my $net;
+	my $exists = 0;
+	unless (opendir $net, $sys_virtual_path) {
+		$ctx->log(error => "Could not open directory: " . $sys_virtual_path . " Reason: " . $!);
+		return undef;
+	}
+	while (my $file = readdir($net)) {
+		if ($file =~ /^tun[0-9]+/) {
+			$exists = 1;
+			last;
+		}
+	}
+	closedir $net;
+	return $exists;
+}
 
-sub get_api_status
+sub get_api_status 
+# supposed to be called only from AnyEvent timer event
 {
 	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
 	unless (open ROUTE, '<', '/proc/net/route') {
 		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
+		$Current_Status = NET_BROKEN;
+		$Current_Update_Time = time();
+		update_status_file($Current_Status);
 		return NET_BROKEN;
 	}
 	while (<ROUTE>) {
 		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
 			close ROUTE;
+			$Current_Status = NET_CRIPPLED;
+			$Current_Update_Time = time();
+			update_status_file($Current_Status);
 			return NET_CRIPPLED;
 		}
 	}
 	close ROUTE;
 
-	my $reply;
-	if ( $Url_For_Api_Check ne 'none') {
-		try {
-			my $json;
-			if ( $json = http_req($Url_For_Api_Check) ) {
-				return NET_CRIPPLED if $json =~ /<meta name="flag" content="1"\/>/g;
-				$reply = decode_json($json);
-			}
-		} catch {
-			undef $reply;
-		};
+	if (tun_interface_exists() && $Url_For_Api_Check ne 'none') {
+		my $status = http_req_async($Url_For_Api_Check); # it will set $Current_Status
+		return $status;
 	}
 
-	unless (defined $reply or defined $reply->{'status'}) {
-		return quick_net_status();
-	}
-
-	my $status = $reply->{'status'};
-	if ($status eq 'Unprotected') { return NET_UNPROTECTED; }
-	elsif ($status eq 'Protected') { return NET_PROTECTED; }
-
-	return NET_UNKNOWN;
+	$Current_Status = quick_net_status();
+	$Current_Update_Time = time();
+	return $Current_Status;
 }
-
 
 sub quick_net_status
 {
@@ -163,19 +202,20 @@ sub quick_net_status
 	}
 	close ROUTE;
 
-	my $sys_virtual_path = "/sys/devices/virtual/net/";
+	my $tun_interface_exists = tun_interface_exists();
+	unless (defined $tun_interface_exists) {
+		return NET_BROKEN;
+	}
+	if ($tun_interface_exists) {
+		if ($Current_Status == NET_UNCONFIRMED) {
+			return NET_UNCONFIRMED;
+		}
+		return NET_PROTECTED;
+	}
+
 	my $sys_net_path = "/sys/class/net/";
 	my $net;
 	my @interface_array;
-
-	unless (opendir $net, $sys_virtual_path) {
-		$ctx->log(error => "Could not open directory: " . $sys_virtual_path . " Reason: " . $!);
-		return NET_BROKEN;
-	}
-	while (my $file = readdir($net)) {
-		return NET_PROTECTED if ($file =~ /^tun[0-9]+/);
-	}
-	closedir $net;
 
 	unless (opendir $net, $sys_net_path) {
 		$ctx->log(error => "Could not open directory: " . $sys_net_path . " Reason: " . $!);
@@ -494,6 +534,8 @@ sub popup_dialog
 		$msg = 'Unable to start VPN. Network put into safe mode';
 	} elsif ($status_to_display == NET_BROKEN) {
 		$msg = 'Network is BROKEN';
+	} elsif ($status_to_display == NET_UNCONFIRMED) {
+		$msg = 'VPN connection status is UNCONFIRMED';
 	} else {
 		$msg = 'Network is in an unknown status (' . $status_to_display . ')';
 	}
@@ -708,7 +750,7 @@ sub spawn_undo_crippling
 sub undo_crippling_callback
 {
 	set_current_task_to_idle();
-	$Current_Status = get_api_status();
+	$Current_Status = quick_net_status();
 	$Current_Update_Time = time();
 	update_status_file($Current_Status);
 	popup_dialog($Current_Status);
@@ -721,9 +763,9 @@ sub undo_crippling_on_error
 	set_current_task_to_idle();
 	my $msg = shift;
 	$ctx->log( error => "undo_crippling child process died unexpectedly: " . $msg );
-	$Current_Status = get_api_status();
+	$Current_Status = quick_net_status();
 	$Current_Update_Time = time();
-	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED) {
+	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED || $Current_Status == NET_UNCONFIRMED) {
 		return 0;
 	} else {
 		system("/usr/bin/rm -f /etc/resolv.conf");
@@ -821,7 +863,7 @@ sub spawn_retry_vpn
 sub retry_vpn_callback
 {
 	set_current_task_to_idle();
-	if (get_api_status() == NET_UNPROTECTED) {
+	if (quick_net_status() == NET_UNPROTECTED) {
 		redirect_page();
 		update_status_file(NET_CRIPPLED);
 		popup_dialog(NET_CRIPPLED);
@@ -835,9 +877,9 @@ sub retry_vpn_on_error
 	set_current_task_to_idle();
 	my $msg = shift;
 	$ctx->log( error => "Retry_vpn child process died unexpectedly: " . $msg );
-	$Current_Status = get_api_status();
+	$Current_Status = quick_net_status();
 	$Current_Update_Time = time();
-	if ($Current_Status == NET_PROTECTED) {
+	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNCONFIRMED) {
 		return 0;
 	} elsif ($Current_Status == NET_UNPROTECTED) {
 		redirect_page();
@@ -861,7 +903,7 @@ sub detect_change
 
 	$ctx->log(debug => "Refreshing network status") if DEBUG > 0;
 
-	$Current_Status = get_api_status();
+	$Current_Status = quick_net_status();
 	$Current_Update_Time = time();
 	log_net_status($Current_Status) if DEBUG > 0;
 	$ctx->log(debug => "\tprevious_status = " . get_status_text($Previous_Status) . " current_status = " . get_status_text($Current_Status) ) if DEBUG > 1;
@@ -990,6 +1032,13 @@ sub run_once
 		cb => \&detect_change,
 	);
 
+	# Start periodic API check status
+	$Api_Check_Timer = AnyEvent->timer(
+		after => 0,
+		interval => API_CHECK_INTERVAL,
+		cb => \&get_api_status,
+	);
+
 	if (defined $ARGV[0]) { spawn_undo_crippling(); };
 }
 
@@ -1041,7 +1090,12 @@ tcp_server(
 				$ctx->log(debug => "Take-a-break requested, Temporary disable_crippling") if DEBUG > 0;
 
 			} elsif ($buf eq "get-api-status") {
-				$self->push_write(get_api_status() . "\n");
+				# if, for any reason, the saved status is older than needed we'll re-request it
+				if ($Current_Update_Time + API_CHECK_INTERVAL < time()) {
+					$Current_Status = get_api_status();
+					$Current_Update_Time = time();
+				}
+				$self->push_write($Current_Status . "\n");
 
 			} elsif ($buf eq "get-net-status") {
 				$self->push_write(quick_net_status() . "\n");
