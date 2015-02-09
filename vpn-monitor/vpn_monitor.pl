@@ -360,6 +360,7 @@ sub get_status_text
 	elsif ($status == NET_OFFLINE) { return "OFFLINE"; }
 	elsif ($status == NET_CRIPPLED) { return "CRIPPLED"; }
 	elsif ($status == NET_BROKEN) { return "BROKEN"; }
+	elsif ($status == NET_UNCONFIRMED) { return "UNCONFIRMED"; }
 	elsif ($status == NET_ERROR) { return "ERROR"; }
 
 	return "UNKNOWN";

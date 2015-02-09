@@ -3,7 +3,7 @@ package vpn_ipc;
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
@@ -33,6 +33,7 @@ use constant {
 	NET_OFFLINE     => 2,
 	NET_CRIPPLED    => 3,
 	NET_BROKEN      => 4,
+	NET_UNCONFIRMED => 5,
 	NET_ERROR       => 99,
 	NET_UNKNOWN     => 100
 };

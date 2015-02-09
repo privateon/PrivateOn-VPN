@@ -319,10 +319,7 @@ sub showNetStatus {
 	my $status_text;
 	my $api_status = getApiStatus();
 
-	if ($api_status == NET_UNCONFIRMED) {
-		$status_text = "The VPN is up, but the network status is unconfirmed\n";
-	}
-	elsif ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
+	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) {
 		$status_text = "The network is online\n";
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text = "The network is in safemode\n";
@@ -332,6 +329,9 @@ sub showNetStatus {
 
 	if ($api_status == NET_PROTECTED) {
 		$status_text .= "The VPN is up\n";
+		this->{turnoffButton}->setEnabled(1);
+	} elsif ($api_status == NET_UNCONFIRMED) {
+		$status_text = "The VPN is unconfirmed\n";
 		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text .= "The VPN is down\n";
@@ -389,7 +389,7 @@ sub setButtons {
 	}		
 	
 	# set turnoffButton and refreshButton
-	if ( $network eq "PROTECTED" ) {
+	if ( $network eq "PROTECTED" || $network eq "UNCONFIRMED") {
 		this->{turnoffButton}->setText(this->tr('Turn off'));
 		this->{turnoffButton}->setEnabled(1);
 		this->{refreshButton}->setText(this->tr('Refresh'));
