@@ -107,23 +107,33 @@ sub http_req_async
 	my $url = shift;
 	$Current_Status = NET_UNCONFIRMED;
 	$Current_Update_Time = time();
-	update_status_file($Current_Status);
 	http_get $url, timeout => API_CHECK_TIMEOUT, sub {
 		my ($data, $headers) = @_;
+
+		if ( !defined($data) ) {
+			$Current_Status = NET_UNKNOWN;
+			$ctx->log(error => "http_req_async returned empty value, Current_Status = NET_UNKNOWN");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "Current_Task = " . $Current_Task) if DEBUG > 0;
+			$Current_Update_Time = time();
+			return;
+		}
+
 		return NET_CRIPPLED if $data =~ /<meta name="flag" content="1"\/>/g;
+
 		my $reply = decode_json($data);
 		my $status = $reply->{'status'};
 		if ($status eq 'Unprotected') { 
 			$Current_Status = NET_UNPROTECTED; 
-		}
-		elsif ($status eq 'Protected') { 
+		} elsif ($status eq 'Protected') { 
 			$Current_Status = NET_PROTECTED; 
-		}
-		else {
+		} else {
 			$Current_Status = NET_UNKNOWN;
+			$ctx->log(error => "http_req_async returned unparseable data, Current_Status = NET_UNKNOWN");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "Current_Task = " . $Current_Task) if DEBUG > 0;
+			$data =~ s/\R//g if DEBUG > 1;
+			$ctx->log(debug => "http_req_async data=$data") if DEBUG > 1;
 		}
 		$Current_Update_Time = time();
-		update_status_file($Current_Status);
 	};
 
 	# We will wait for API_WAIT_TIMEOUT seconds so that if everything is allright,
@@ -490,7 +500,7 @@ sub read_api_url_from_inifile
 	}
 	close $vpn_ini;
 	
-	if (not defined($url)) {
+	if ( !defined($url) ) {
 		$ctx->log(error => "Unexpected error while reading " . INI_FILE . ".  Reason: " . $!);
 		$ctx->log(debug => "   Disabling API check.");
 		$Url_For_Api_Check = 'none';
@@ -554,7 +564,7 @@ sub popup_dialog
 		}
 		close(WHO);
 		# if who parse fails, use username with ID 1000
-		if (not defined($username)) {
+		if ( !defined($username) ) {
 			$username = getpwuid(1000);
 			$ctx->log(debug => "Who parse failed. using user ($username) ID 1000." ) if DEBUG > 0;
 		}
@@ -763,7 +773,7 @@ sub undo_crippling_on_error
 {
 	set_current_task_to_idle();
 	my $msg = shift;
-	$ctx->log( error => "undo_crippling child process died unexpectedly: " . $msg );
+	$ctx->log(error => "undo_crippling child process died unexpectedly: " . $msg);
 	$Current_Status = quick_net_status();
 	$Current_Update_Time = time();
 	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED || $Current_Status == NET_UNCONFIRMED) {
@@ -877,7 +887,7 @@ sub retry_vpn_on_error
 {
 	set_current_task_to_idle();
 	my $msg = shift;
-	$ctx->log( error => "Retry_vpn child process died unexpectedly: " . $msg );
+	$ctx->log(error => "Retry_vpn child process died unexpectedly: " . $msg);
 	$Current_Status = quick_net_status();
 	$Current_Update_Time = time();
 	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNCONFIRMED) {
@@ -898,7 +908,7 @@ sub retry_vpn_on_error
 
 sub detect_change
 {
-	if ( not defined($Monitor_Enabled) or $Monitor_Enabled == 0 or $Temporary_Disable == 1) {
+	if ( !defined($Monitor_Enabled) || $Monitor_Enabled == 0 || $Temporary_Disable == 1) {
 		return;
 	}
 
