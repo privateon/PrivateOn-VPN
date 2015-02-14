@@ -3,7 +3,8 @@
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>
+# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>,
+#         Maksim A. Boyko <maksim.a.boyko@gmail.com>
 #
 # Copyright (C) 2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
@@ -11,89 +12,134 @@
 
 Name:           privateon-vpn
 Packager:       Tietosuojakone Oy <info@tietosuojakone.fi>
-Version:        0.9
-Release:        1
+Version:        __VERSION__
+Release:        __RELEASE__
 Summary:        PrivateOn VPN package
 License:        Artistic-2.0
 Group:          Productivity/Networking/Security
 Url:            http://www.privateon.net
-Source0:        privateon-vpn-0.9.tar
-Distribution:   openSUSE 13.2
-Requires:       perl-AnyEvent perl-qt4 thttpd dnsmasq perl-HTTP-Lite perl-List-MoreUtils perl-IO-Pty-Easy perl-UI-Dialog xhost
+Source:         privateon-vpn-%{version}.tar.gz
+Distribution:   __DISTRIBUTION__
+BuildArch:      noarch
+BuildRequires:  systemd
+BuildRequires:  systemd-rpm-macros
+BuildRequires:  update-desktop-files
+BuildRequires:  logrotate
+BuildRequires:  sudo
+Requires:       perl
+Requires:       perl-qt4
+Requires:       perl-POE
+Requires:       perl-AnyEvent
+Requires:       perl-HTTP-Lite
+Requires:       perl-UI-Dialog
+Requires:       perl-IO-Pty-Easy
+Requires:       perl-IO-Interface
+Requires:       perl-List-MoreUtils
+Requires:       perl-Proc-ProcessTable
+Requires:       perl-AnyEvent-HTTP
+Requires:       perl-File-Pid
+Requires:       perl-IO-FDPass
+Requires:       perl-Proc-FastSpawn
+Requires:       perl-AnyEvent-Fork
+Requires:       perl-AnyEvent-Fork-RPC
+Requires:       perl-No-Worries
+Requires:       thttpd
+Requires:       dnsmasq
+Requires:       xhost
+Requires:       systemd
+Requires:       logrotate
+Requires:       sudo
 Suggests:       monit
-
-
-# Sadly, openSUSE at this time provides only 3.72 (Workaround for perl 5.20 bug needs 3.73)
-# perl-common-sense >= 3.73
-
-# These are available from the standard perl devel repo;
-# perl-UI-Dialog (UI::Dialog::Backend::KDialog)
-# perl-IO-Pty-Easy (IO::Pty::Easy)
-
-# Additional packages required, not found in base repos; To be built by us:
-# perl-AnyEvent-Fork-RPC (AnyEvent::Fork::RPC)
-# perl-No-Norries (No::Worries::PidFile)
-
-# Additionally:
-#"SvREFCNT_inc" is not exported by the Devel::Peek module
-#Can't continue after import errors at /usr/lib/perl5/vendor_perl/5.20.1/x86_64-linux-thread-multi/QtGui4.pm line 25.
-# To remedy this problem, simply remove the qw(svREFCNT_inc) from the line (It's not needed anyway)
-
+%{?systemd_requires}
 
 %description
 PrivateOn VPN is a robust VPN monitor/manager bundle
 
 %prep
-%setup
+%setup -q -n privateon-vpn-%{version}
+
+%build
 
 %install
-mkdir -p %{buildroot}/opt/PrivateOn-VPN/vpn-gui/images %{buildroot}/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors %{buildroot}/etc/systemd/system %{buildroot}/etc/sudoers.d %{buildroot}/var/run/PrivateOn
-for file in vpn-default.ini LICENSE README.md $(find vpn-gui vpn-monitor -type f); do
-    cp $file %{buildroot}/opt/PrivateOn-VPN/$file
-done
-cp install/vpnmonitor.service %{buildroot}/etc/systemd/system/
-cp install/sudoers.d/PrivateOn %{buildroot}/etc/sudoers.d/
+mkdir -p %{buildroot}
+cp -a * %{buildroot}
+%suse_update_desktop_file -r VPN Qt Network X-SuSE-Core-Internet
+
+%pre
+%service_add_pre vpnmonitor.service
 
 %post
-grep /usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE /etc/ld.so.conf >/dev/null 2>&1 || (echo "/usr/lib/perl5/5.20.1/x86_64-linux-thread-multi/CORE" >> /etc/ld.so.conf && ldconfig)
-systemctl daemon-reload
-systemctl enable vpnmonitor.service
-systemctl start vpnmonitor.service
+rm -f /opt/PrivateOn-VPN/monitrc
+mkdir -p /etc/ld.so.conf.d
+cat > /etc/ld.so.conf.d/PrivateOn.conf << EOF
+EOF
+echo "%{perl_archlib}/CORE" | sed 's/i586/x86_64/g' >> /etc/ld.so.conf.d/PrivateOn.conf
+echo "%{perl_archlib}/CORE" | sed 's/x86_64/i586/g' >> /etc/ld.so.conf.d/PrivateOn.conf
+/sbin/ldconfig
+mkdir -p  /var/run/PrivateOn
+cd /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/
+for i in $(seq 400 415) ; do
+    [ ! -L  err${i}.html ] && ln -s ../index.html err${i}.html
+done
+[ ! -L  /usr/sbin/rcvpnmonitor ] && ln -s /usr/sbin/service /usr/sbin/rcvpnmonitor
+if which monit &>/dev/null ; then
+    if [ -f /etc/monitrc ] ; then
+       if [ -n "$(grep 'include.*/etc/monit.d/' /etc/monitrc | grep '^#')" ] ; then
+           cp /etc/monitrc /etc/monitrc.orig
+           echo "include /etc/monit.d/*" >> /etc/monitrc
+           sed -i "/^#.*include.*\/etc\/monit.d\/.*$/d" /etc/monitrc
+       fi
+    else    
+        cp -f /opt/PrivateOn-VPN/monitrc /etc/monitrc
+    fi
+fi
+systemd-tmpfiles --create /usr/lib/tmpfiles.d/PrivateOn.conf >/dev/null 2>&1 || :
+systemctl daemon-reload >/dev/null 2>&1 || :
+systemctl enable vpnmonitor.service >/dev/null 2>&1 || :
+systemctl start vpnmonitor.service >/dev/null 2>&1 || :
+%service_add_post vpnmonitor.service
+exit 0
+
+%preun
+# 0 - uninstallation
+# 1 - upgrade
+%service_del_preun vpnmonitor.service
+if [ $1 -eq 0 ] ; then
+    systemctl stop vpnmonitor.service >/dev/null 2>&1 || :
+    systemctl disable vpnmonitor.service >/dev/null 2>&1 || :
+    rm -f /usr/sbin/rcvpnmonitor
+    rm -f /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/*.html
+    rm -f /etc/ld.so.conf.d/PrivateOn
+fi
+
+exit 0
+
+%postun
+# 0 - uninstallation
+# 1 - upgrade
+%service_del_postun vpnmonitor.service
+if [ $1 -eq 0 ] ; then
+    systemctl daemon-reload >/dev/null 2>&1 || :
+    /sbin/ldconfig
+fi
+exit 0
 
 %files
-/etc/sudoers.d/PrivateOn
-/etc/systemd/system/vpnmonitor.service
-/opt/PrivateOn-VPN/LICENSE
-/opt/PrivateOn-VPN/README.md
-/opt/PrivateOn-VPN/vpn-default.ini
-/opt/PrivateOn-VPN/vpn-gui/gui.sh
-/opt/PrivateOn-VPN/vpn-gui/kill_gui.sh
-/opt/PrivateOn-VPN/vpn-gui/vpn_countries.pm
-/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
-/opt/PrivateOn-VPN/vpn-gui/vpn_install.pm
-/opt/PrivateOn-VPN/vpn-gui/vpn_ipc.pm
-/opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
-/opt/PrivateOn-VPN/vpn-gui/vpn_window.pm
-/opt/PrivateOn-VPN/vpn-gui/images/PrivateOn-icon.png
-/opt/PrivateOn-VPN/vpn-gui/images/PrivateOn-logo.png  
-/opt/PrivateOn-VPN/vpn-gui/images/tray-broken-guard.png
-/opt/PrivateOn-VPN/vpn-gui/images/tray-broken-ignore.png  
-/opt/PrivateOn-VPN/vpn-gui/images/tray-crippled-guard.png
-/opt/PrivateOn-VPN/vpn-gui/images/tray-protected-guard.png  
-/opt/PrivateOn-VPN/vpn-gui/images/tray-protected-ignore.png
-/opt/PrivateOn-VPN/vpn-gui/images/tray-refresh-guard.png     
-/opt/PrivateOn-VPN/vpn-gui/images/tray-unprotected-guard.png
-/opt/PrivateOn-VPN/vpn-gui/images/tray-unprotected-ignore.png
-/opt/PrivateOn-VPN/vpn-monitor/vpn_logger.sh
-/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
-/opt/PrivateOn-VPN/vpn-monitor/vpn_retry.pm
-/opt/PrivateOn-VPN/vpn-monitor/vpn_uncripple.pm
-/opt/PrivateOn-VPN/vpn-monitor/watch_monitor.sh
-/opt/PrivateOn-VPN/vpn-monitor/htdocs/index.html
-%dir /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors
-%dir /var/run/PrivateOn
+%defattr(0644,root,root,-)
+%dir /etc/monit.d
+%config %attr(0600,root,root) /etc/monit.d/PrivateOn
+%config /etc/sudoers.d/PrivateOn
+%config /etc/logrotate.d/PrivateOn
+/usr/lib/tmpfiles.d/PrivateOn.conf
+/usr/share/applications/VPN.desktop
+%_unitdir/vpnmonitor.service
+%_mandir/man8/vpn_*.gz
+%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/*.sh
+%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/*.pl
+%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/*.sh
+%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/*.pl
+/opt/PrivateOn-VPN
 
 %doc
-
 
 %changelog

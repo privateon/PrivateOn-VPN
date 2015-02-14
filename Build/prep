@@ -2,38 +2,65 @@
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>
+# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>,
+#         Maksim A. Boyko <maksim.a.boyko@gmail.com>
 #
 # Copyright (C) 2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
 # Usage:
-# . prep
+# . Build/prep
 # <hack away>
 # rpmbuild -v -bb --clean privateon-vpn.spec
 
-
 VERSION=0.9
+RELEASE=1
+DISTRIBUTION="openSUSE 13.2"
 SOURCES=/usr/src/packages/SOURCES
 
-cd .. && \
-    rm -rf privateon-vpn-${VERSION}  && \
-    rm -f ${SOURCES}/privateon-vpn-${VERSION}.tar  && \
-    mkdir privateon-vpn-${VERSION}  && \
-    cp -p LICENSE README.md vpn-default.ini  privateon-vpn-${VERSION}  && \
-    cp -p -r vpn-gui vpn-monitor install  privateon-vpn-${VERSION}  && \
-    tar -cf privateon-vpn-${VERSION}.tar  privateon-vpn-${VERSION}  && \
-    mv privateon-vpn-${VERSION}.tar  ${SOURCES}/  && \
-    rm -rf privateon-vpn-${VERSION}  && \
-cd - 1>/dev/null
+buildroot=privateon-vpn-${VERSION}
 
+# Clean up
+rm -fr $buildroot
+rm -f privateon-vpn-${VERSION}.tar.gz
+rm -f privateon-vpn.spec
 
-if [ -f ${SOURCES}/privateon-vpn-${VERSION}.tar ];
-then
-    echo -n "Created original source for RPM build: "
-    ls ${SOURCES}/privateon-vpn-${VERSION}.tar
-else
-    echo "Error: Failed to create original source for RPM build !"
-    rm -rf ../privateon-vpn-${VERSION}
-fi
+# Make buildroot dirs tree
+mkdir -p $buildroot/opt/PrivateOn-VPN/vpn-gui/images
+mkdir -p $buildroot/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors
+mkdir -p $buildroot/usr/lib/systemd/system
+mkdir -p $buildroot/usr/lib/tmpfiles.d
+mkdir -p $buildroot/etc/sudoers.d
+mkdir -p $buildroot/etc/logrotate.d
+mkdir -p $buildroot/usr/share/applications/
+mkdir -p $buildroot/etc/monit.d/
+mkdir -p $buildroot/usr/share/man/man8
+
+# Copy files
+for file in vpn-default.ini LICENSE README.md $(find vpn-gui vpn-monitor -type f); do
+    [ ! -L $file ]  && cp $file $buildroot/opt/PrivateOn-VPN/$file
+done
+cp install/monitrc $buildroot/opt/PrivateOn-VPN/
+cp install/vpnmonitor.service $buildroot/usr/lib/systemd/system
+cp install/sudoers.d/PrivateOn $buildroot/etc/sudoers.d/
+cp install/logrotate.d/PrivateOn $buildroot/etc/logrotate.d/
+cp install/VPN.desktop $buildroot/usr/share/applications/
+cp install/tmpfiles.d/PrivateOn.conf $buildroot/usr/lib/tmpfiles.d
+cp install/monit.d/PrivateOn $buildroot/etc/monit.d/
+cp install/man/* $buildroot/usr/share/man/man8
+find $buildroot/usr/share/man/man8/ -type f -exec gzip '{}' \;
+rm -f $buildroot/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/.empty
+
+# Make tarball
+tar -czf privateon-vpn-${VERSION}.tar.gz $buildroot/
+cp privateon-vpn-${VERSION}.tar.gz $SOURCES/
+
+# Make spec
+cp Build/privateon-vpn.spec .
+sed -i "s/^Version:.*$/Version:        ${VERSION}/g" privateon-vpn.spec
+sed -i "s/^Release:.*$/Release:        ${RELEASE}/g" privateon-vpn.spec
+sed -i "s/^Distribution:.*$/Distribution:   ${DISTRIBUTION}/g" privateon-vpn.spec
+
+# Clean up
+rm -fr $buildroot
