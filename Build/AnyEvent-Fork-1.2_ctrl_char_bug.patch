@@ -1,0 +1,11 @@
+--- ./AnyEvent-Fork-1.2/Fork.pm	2013-08-31 21:01:22.000000000 +0300
++++ ./AnyEvent-Fork-1.2/Fork.pm	2015-02-14 22:35:00.837602575 +0200
+@@ -627,7 +627,7 @@ sub new_exec {
+ 
+    unless (defined $PERL) {
+       # first find path of perl
+-      my $perl = $;
++      my $perl;
+ 
+       # first we try $^X, but the path must be absolute (always on win32), and end in sth.
+       # that looks like perl. this obviously only works for posix and win32
