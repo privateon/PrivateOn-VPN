@@ -36,4 +36,4 @@ if [ ! -z "$PID" ]; then
 fi
 
 # Start vpn-gui
-sudo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY $DAEMON 1
+sudo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY $DAEMON --show

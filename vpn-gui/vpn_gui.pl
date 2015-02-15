@@ -37,13 +37,27 @@ if ($<) {
 }
 
 
+# process command-line arguments
+my $show_option = 0;
+foreach (@ARGV) {
+	if ( /^(-\?|-h|--help)$/ ) {
+		print STDERR "Usage: vpn_gui.pl [OPTION]\n" .
+		   "  -s or --show       Show widget on startup\n" .
+		   "  -h or --help       Print this message and exit\n";
+		exit 0;
+	} elsif ( /^(-s|--show)$/ ) {
+		$show_option = 1;
+	}
+}
+
+
 sub main
 {
 	my $app = Qt::Application(\@ARGV);
 	my $window = vpn_window();
 	my $tray = vpn_tray($window);
 
-	if ( defined($ARGV[0]) && ($ARGV[0] eq '1') ) {
+	if ($show_option) {
 		$window->show();
 	}
 	return $app->exec();
