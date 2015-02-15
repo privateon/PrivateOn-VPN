@@ -694,7 +694,7 @@ sub updateDefaultVpn {
 
 		# detect nmcli version
 		my @active_lines;
-		my $test_string = '/usr/bin/nmcli conn show --active';
+		my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
 		if (DEBUG > 0) {
 			print STDERR "All active connections\n";
 			$test_string = '/usr/bin/nmcli conn show --active';
@@ -713,29 +713,43 @@ sub updateDefaultVpn {
 			}
 		}
 		
-		# failover command if above gave no results
+		# set failover flag if above gave no results
+		my $failover_mode = 0;
 		if (!@active_conns) {
-			@active_lines = `/usr/bin/nmcli conn`;
-			foreach my $conn (@active_lines) {
-				if ($conn =~ /(\S+)/) {
-					push @active_conns, $1;
-				}
-			}
+			$failover_mode = 1;
 		}
 
 		my $vpn_connection = getVpnConnection(getConnections());
 		my $pty = this->{pty};
 		foreach my $conn (@$vpn_connection) {
 			my $vpn_name = $conn->{connection}->{id};
-			if ($vpn_name ~~ @active_conns) {
+			if ( $failover_mode  || ($vpn_name ~~ @active_conns) ) {
 				try {
 					print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
-					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
-					# wait for connection to close
-					sleep(1);
-					for (my $i = 0; $i < 10; $i++) {
-						if (!isVpnActive()) { last; }
-						sleep 1;
+					if (!$failover_mode) {
+						$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
+
+						# wait for connection to close
+						for (my $i = 0; $i < 10; $i++) {
+							sleep 1;
+							if (!isVpnActive()) { last; }
+						}
+					} else {
+						# Don't collect the error output since failover mode produces a lot of it
+						$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null 2>&1 && echo \"$vpn_name deactivated\"");
+
+						# wait up to 4 sec for connection to be brought down
+						for (my $i = 0; $i < 4; $i++) {
+							sleep(1);
+							unless ($pty->is_active) { last; }
+						}
+
+						# restart pty if it is still active
+						if ($pty->is_active) {
+							$pty->close();
+							$pty = IO::Pty::Easy->new();
+							this->{pty} = $pty;
+						}
 					}
 				} catch {
 					warn "caught error: $_\n";
@@ -981,7 +995,7 @@ sub turnOffVpn {
 
 	# detect nmcli version
 	my @active_lines;
-	my $test_string = '/usr/bin/nmcli conn show --active';
+	my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
 	if (DEBUG > 0) {
 		print STDERR "All active connections\n";
 		$test_string = '/usr/bin/nmcli conn show --active';
