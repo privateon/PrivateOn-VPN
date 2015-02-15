@@ -22,6 +22,7 @@ CHECK=/opt/PrivateOn-VPN/vpn-monitor/check_monitor.pl
 DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
 
 # Check network and vpn-monitor
+echo -e "\nStarting check_monitor.pl in the background."
 sudo DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY $CHECK &
 
 # Kill existing instance of vpn-gui

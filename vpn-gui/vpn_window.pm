@@ -73,7 +73,7 @@ sub NEW {
 	this->{vpnType} = 'vpn';
 	this->{protocol} = 'tcp';
 
-	# update statut text timer
+	# update status text timer
 	this->{internalTimer} = Qt::Timer(this);  # create internal timer
 	this->connect(this->{internalTimer}, SIGNAL('timeout()'), SLOT('updateStatus()'));
 	this->{internalTimer}->start(5000);	  # emit signal every 5 second
@@ -569,7 +569,7 @@ sub setUserInfo {
 
 	unless ($ok) {
 		$status_text .= "Credentials entry aborted.\n";
-		$status_text .= "Click Setup to change VPN credentials ";
+		$status_text .= "Click 'Servers' to change VPN credentials ";
 		$status_text .= "and retrieve latest server list.";
 		setStatusText($status_text);
 		this->{userpassButton}->setEnabled(1);
@@ -722,7 +722,7 @@ sub updateDefaultVpn {
 				}
 			}
 		}
-	
+
 		my $vpn_connection = getVpnConnection(getConnections());
 		my $pty = this->{pty};
 		foreach my $conn (@$vpn_connection) {
