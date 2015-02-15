@@ -6,7 +6,7 @@ package vpn_countries;
 # Author: Mikko Rautiainen <info@tietosuojakone.fi>
 #         Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 

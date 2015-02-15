@@ -4,7 +4,7 @@
 #
 # Author: Mikko Rautiainen <info@tietosuojakone.fi>
 #
-# Copyright (C) 2014  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+# Copyright (C) 2014-2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
