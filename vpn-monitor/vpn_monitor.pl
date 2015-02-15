@@ -388,22 +388,68 @@ sub log_net_status
 
 ################	    Helper subroutines		################
 
+sub parse_command_line_arguments
+{
+	foreach (@ARGV) {
+		if ( /^(-\?|-h|--help)$/ ) {
+			$Skip_Cleanup = 1;
+			print STDERR "Usage: vpn-monitor.pl [OPTION]\n" .
+			   "  -u or --uncripple  Remove network crippling and start daemon\n" .
+			   "  -h or --help       Print this message and exit\n";
+			exit 0;
+		} elsif ( /^(-u|--uncripple)$/ ) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+
+sub uncripple_using_netcat
+{
+	$ctx->log(info => "Attempting uncrippling by sending command");
+	$ctx->log(info => "\tfrom process " . $$ . " to running instance");
+	print "\nAttempting uncrippling by sending command to existing instance\n";
+	my $uncripple_command = "/usr/bin/echo 'undo-crippling' | /usr/bin/nc " . IPC_HOST . " " . IPC_PORT;
+	if ( system($uncripple_command) eq 0 ) {
+		$ctx->log(info => "Successfully sent uncrippling command");
+		print "Successfully sent uncrippling command\n";
+		return 0;
+	} else {
+		$ctx->log(info => "Uncrippling command failed");
+		print "Uncrippling command failed\n";
+	}
+	return 1;
+}
+
+
 sub get_lock
 {
+	my $uncripple_option = shift;
+
+	system("/usr/bin/mkdir -p /var/run/PrivateOn");
 	unless (open $Lockfile_Handle, ">>", LOCK_FILE) {
 		$Skip_Cleanup = 1;
+		if ($uncripple_option) {
+			my $return_code = uncripple_using_netcat();
+			$ctx->log(info => "Exiting uncrippling process " . $$ . ".");
+			exit $return_code;
+		}
 		$ctx->log(error => "Process " . $$ . " could not open lockfile " . LOCK_FILE . ": " . $!);
 		$ctx->log(error => "$0 is already running. Exiting process " . $$ . ".");
 		die "$0 is already running. Exiting.\n";
 	}
 	unless ( flock($Lockfile_Handle, LOCK_EX|LOCK_NB) ) {
 		$Skip_Cleanup = 1;
+		if ($uncripple_option) {
+			my $return_code = uncripple_using_netcat();
+			$ctx->log(info => "Exiting uncrippling process " . $$ . ".");
+			exit $return_code;
+		}
 		$ctx->log(error => "Process " . $$ . " could not open exclusive lock: " . $!);
 		$ctx->log(error => "$0 is already running. Exiting process " . $$ . ".");
 		die "$0 is already running. Exiting.\n";
 	}
-
-	return 1;
 }
 
 
@@ -484,7 +530,7 @@ sub read_api_url_from_inifile
 	my $vpn_ini;
 	unless (open $vpn_ini, "<" . INI_FILE) {
 		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-		$ctx->log(debug => "   Disabling API check.");
+		$ctx->log(info => "   Disabling API check.");
 		$Url_For_Api_Check = 'none';
 		return 2;
 	}
@@ -502,25 +548,25 @@ sub read_api_url_from_inifile
 	
 	if ( !defined($url) ) {
 		$ctx->log(error => "Unexpected error while reading " . INI_FILE . ".  Reason: " . $!);
-		$ctx->log(debug => "   Disabling API check.");
+		$ctx->log(info => "   Disabling API check.");
 		$Url_For_Api_Check = 'none';
 		return 2;
 	} elsif ($url eq 'none') {
-		$ctx->log(debug => "No URL entry found in " . INI_FILE) if DEBUG > 0;
-		$ctx->log(debug => "   Disabling API check.") if DEBUG > 0;
+		$ctx->log(info => "No URL entry found in " . INI_FILE);
+		$ctx->log(info => "   Disabling API check.");
 		$Url_For_Api_Check = 'none';
 		return 1;
 	} elsif ($url eq '') {
-		$ctx->log(debug => "URL entry empty in " . INI_FILE) if DEBUG > 0;
-		$ctx->log(debug => "   Disabling API check.") if DEBUG > 0;
+		$ctx->log(info => "URL entry empty in " . INI_FILE);
+		$ctx->log(info => "   Disabling API check.");
 		$Url_For_Api_Check = 'none';
 		return 1;
 	} elsif ($url =~ /http\:.*/) {
-		$ctx->log(debug => "Using API check URL $url") if DEBUG > 0;
+		$ctx->log(info => "Using API check URL $url");
 		$Url_For_Api_Check = $url;
 		return 0;
 	} else {
-		$ctx->log(error => "Error addind API check URL $url");
+		$ctx->log(error => "Error adding API check URL $url");
 		$ctx->log(error => "   URL must start with \"http:\"   Disabling API check.");
 		$Url_For_Api_Check = 'none';
 		return 2;
@@ -730,7 +776,7 @@ sub redirect_page
 sub spawn_undo_crippling
 {
 	$Current_Task = "uncrippling";
-	$ctx->log(info => "Undoing all network crippling" );
+	$ctx->log(info => "Undoing all network crippling");
 	$ctx->log(debug => "Spawning undo_crippling") if DEBUG > 0;
 
 	# kill previous instance or vpn_retry if still running
@@ -955,14 +1001,14 @@ sub detect_change
 
 sub run_once
 {
-	system("/usr/bin/mkdir -p /var/run/PrivateOn");
+	my $uncripple_option = parse_command_line_arguments();
 
 	$ctx = new AnyEvent::Log::Ctx;
 	$ctx->log_to_file(LOG_FILE);
 	$ctx->log(info => "PrivateOn VPN-monitor daemon ".VERSION." starting up.");
 
 	# make sure there is only one instance running
-	return unless get_lock();
+	get_lock($uncripple_option);
 
 	# write pid if stale or missing
 	if ( -e PID_FILE ) {
@@ -983,7 +1029,7 @@ sub run_once
 		my $vpn_ini;
 		unless (open $vpn_ini, "<" . INI_FILE) {
 			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-			if (defined $ARGV[0]) { spawn_undo_crippling(); };
+			if ($uncripple_option) { spawn_undo_crippling(); };
 			return -1;
 		}
 		my @vpn_ini_lines = <$vpn_ini>;
@@ -991,7 +1037,7 @@ sub run_once
 
 		unless (open VPN_INI, ">" . INI_FILE) {
 			$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
-			if (defined $ARGV[0]) { spawn_undo_crippling(); };
+			if ($uncripple_option) { spawn_undo_crippling(); };
 			return -1;
 		}
 		my $has_been_written = 0;
@@ -1018,7 +1064,7 @@ sub run_once
 		my $vpn_ini;
 		unless (open $vpn_ini, "<" . INI_FILE) {
 			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-			if (defined $ARGV[0]) { spawn_undo_crippling(); };
+			if ($uncripple_option) { spawn_undo_crippling(); };
 			return -1;
 		}
 		while (<$vpn_ini>) {
@@ -1050,7 +1096,7 @@ sub run_once
 		cb => \&get_api_status,
 	);
 
-	if (defined $ARGV[0]) { spawn_undo_crippling(); };
+	if ($uncripple_option) { spawn_undo_crippling(); };
 }
 
 
