@@ -14,12 +14,16 @@
 #
 
 
-export DISPLAY=:0.0
-export XAUTHORITY=$HOME/.Xauthority
-xhost SI:localuser:root
-
 CHECK=/opt/PrivateOn-VPN/vpn-monitor/check_monitor.pl
 DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+
+# XAUTHORITY variable is not set if user is already root
+if test "$(id -u)" -ne 0; then
+	export XAUTHORITY=$HOME/.Xauthority
+fi
+
+export DISPLAY=:0.0
+xhost SI:localuser:root
 
 # Check network and vpn-monitor
 echo -e "\nStarting check_monitor.pl in the background."
