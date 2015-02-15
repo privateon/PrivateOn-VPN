@@ -38,7 +38,7 @@ mkdir -p $buildroot/etc/monit.d/
 mkdir -p $buildroot/usr/share/man/man8
 
 # Copy files
-for file in vpn-default.ini LICENSE README.md $(find vpn-gui vpn-monitor -type f); do
+for file in CONTRIBUTORS.md LICENSE.md README.md $(find vpn-gui vpn-monitor -type f); do
     [ ! -L $file ]  && cp $file $buildroot/opt/PrivateOn-VPN/$file
 done
 cp install/monitrc $buildroot/opt/PrivateOn-VPN/
