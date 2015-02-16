@@ -1214,6 +1214,7 @@ sub updateStatus {
 	state $last_pty_read = 4102444800000; 	# epoch year 2100
 	state $previous_state_string = "";
 	state $last_state_read = 0; 		# epoch year 1970
+	state $unconfirmed_counter = 0;
 
 	while ( my $output = $pty->read(0) ) {
 		$status_text .= $output;
@@ -1247,6 +1248,10 @@ sub updateStatus {
 	my $tmp_previous = $previous_status;
 	$previous_status = $current_status;
 
+	if ($current_status != NET_UNCONFIRMED) {
+		$unconfirmed_counter = 0;
+	}
+
 	if ($current_status != $tmp_previous) {
 		forceRefresh();
 
@@ -1267,8 +1272,16 @@ sub updateStatus {
 			$status_text .= "Network placed in safemode, check VPN settings.\n";
 			$status_text_changed = 1;
 		} elsif ($current_status == NET_UNCONFIRMED && $tmp_previous != NET_UNCONFIRMED) {
-			$status_text .= "Network status is unconfirmed, please wait for status update.\n";
-			$status_text_changed = 1;
+			++$unconfirmed_counter;
+			if ($unconfirmed_counter < 5) {
+				# ignore status change for now
+				$current_status = $tmp_previous; 
+				$previous_status = $tmp_previous;
+			}
+			else {
+				$status_text .= "Network status is unconfirmed, please wait for status update.\n";
+				$status_text_changed = 1;
+			}
 		} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
 			this->{refreshButton}->setEnabled(1);
 			this->{buttonTimer}->stop();
@@ -1309,6 +1322,17 @@ sub updateStatus {
 			} elsif ($current_status == NET_UNCONFIRMED) {
 				$status_text .= "Network connection recovered\nThe network status is still unconfirmed\n";
 				$status_text_changed = 1;
+			}
+		} elsif ( ($current_status != NET_OFFLINE || $current_status != NET_BROKEN || $current_status != NET_ERROR || $current_status != NET_UNKNOWN || $current_status != NET_UNCONFIRMED) 
+		   && ($tmp_previous == NET_UNCONFIRMED) ) {
+		   	if ($unconfirmed_counter > 5) {
+				if ($current_status == NET_PROTECTED) {
+					$status_text .= "The VPN is up\n";
+					$status_text_changed = 1;
+				} elsif ($current_status == NET_UNPROTECTED) {
+					$status_text .= "The VPN is down\n";
+					$status_text_changed = 1;
+				}
 			}
 		}
 	}

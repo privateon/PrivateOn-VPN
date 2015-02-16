@@ -638,9 +638,11 @@ sub main
 
 			debug(2, 'Will start vpn-monitor.');
 			if (!start_monitor()) {
-				push @popup_messages, 'Could not start vpnmonitor.';
-				$exitcode ||= 32;
-				$need_monitor_start = 1;
+				if (!monitor_replies()) {
+					push @popup_messages, 'Could not start vpnmonitor.';
+					$exitcode ||= 32;
+					$need_monitor_start = 1;
+				}
 			}
 
 			if (monitor_is_running()) {
@@ -651,7 +653,7 @@ sub main
 					$need_monitor_start = 1;
 				}
 			}
-			else {
+			elsif (!monitor_replies()) {
 				$need_monitor_start = 1;
 			}
 		}

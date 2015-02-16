@@ -75,7 +75,6 @@ use constant {
 
 use constant {
 	API_CHECK_INTERVAL => 5,
-	API_WAIT_TIMEOUT   => 0.5,
 	API_CHECK_TIMEOUT  => 5,
 };
 
@@ -118,7 +117,11 @@ sub http_req_async
 			return;
 		}
 
-		return NET_CRIPPLED if $data =~ /<meta name="flag" content="1"\/>/g;
+		if ($data =~ /<meta name="flag" content="1"\/>/g) {
+			$Current_Status = NET_CRIPPLED;
+			$Current_Update_Time = time();
+			return;
+		}
 
 		my $reply = decode_json($data);
 		my $status = $reply->{'status'};
@@ -136,11 +139,6 @@ sub http_req_async
 		$Current_Update_Time = time();
 	};
 
-	# We will wait for API_WAIT_TIMEOUT seconds so that if everything is allright,
-	# some defined status is returned. If API does not reply in API_WAIT_TIMEOUT
-	# this function will return NET_UNCONFIRMED.
-
-	select undef, undef, undef, API_WAIT_TIMEOUT;
 	return $Current_Status;
 }
 
