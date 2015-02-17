@@ -1,20 +1,20 @@
 #
-# spec file for package privateon-vpn
+# spec file for package PrivateOn-VPN
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Author: Kimmo R. M. Hovi <kimmo@fairwarning.fi>,
-#         Maksim A. Boyko <maksim.a.boyko@gmail.com>
+# Authors: Maksim A. Boyko <maksim.a.boyko@gmail.com>,
+#          Kimmo R. M. Hovi <kimmo@fairwarning.fi>
 #
 # Copyright (C) 2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
 #
 
-Name:           privateon-vpn
+Name:           PrivateOn-VPN
 Packager:       Tietosuojakone Oy <info@tietosuojakone.fi>
 Version:        __VERSION__
 Release:        __RELEASE__
-Summary:        PrivateOn VPN package
+Summary:        VPN Manager
 License:        Artistic-2.0
 Group:          Productivity/Networking/Security
 Url:            http://www.privateon.net
@@ -76,7 +76,8 @@ EOF
 echo "%{perl_archlib}/CORE" | sed 's/i586/x86_64/g' >> /etc/ld.so.conf.d/PrivateOn.conf
 echo "%{perl_archlib}/CORE" | sed 's/x86_64/i586/g' >> /etc/ld.so.conf.d/PrivateOn.conf
 /sbin/ldconfig
-mkdir -p  /var/run/PrivateOn
+mkdir -p /etc/PrivateOn
+mkdir -p /var/run/PrivateOn
 cd /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/
 for i in $(seq 400 415) ; do
     [ ! -L  err${i}.html ] && ln -s ../index.html err${i}.html

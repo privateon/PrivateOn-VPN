@@ -52,7 +52,7 @@ make install
 	## or ##
 
 ## Apply the patch file from the build directory
-patch -s -p2 < /opt/PrivateOn-VPN/Build/AnyEvent-Fork-1.2_ctrl_char_bug.patch
+patch -s -p2 < /opt/PrivateOn-VPN/Build/dependencies/perl-AnyEvent-Fork-1.2_ctrl_char_bug.patch
 make install
 
 
