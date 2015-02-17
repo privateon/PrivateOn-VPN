@@ -74,8 +74,8 @@ use constant {
 };
 
 use constant {
-	API_CHECK_INTERVAL => 5,
-	API_CHECK_TIMEOUT  => 5,
+	API_CHECK_TIMEOUT       => 10,
+	DETECT_CHANGE_INTERVAL  => 60
 };
 
 ################	  Package-Wide Globals		################
@@ -84,15 +84,16 @@ my $Monitor_Enabled;            # monitor state (set in run_once())
 my $Temporary_Disable = 0;      # used to temporarily disable crippling
 my $Current_Task = "idle";      # stores the current forked task, idle if no task
 my $Current_Status = 999;       # used to cache network status for get_monitor_state responses
-my $Current_Update_Time = 0;    # used to store epoch time of last network status update for cache aging
 my $Previous_Status = 999;      # used to store status result of previous iteration for detecting change 
+my $Current_Update_Time = 0;    # used to store epoch time of last network status update for cache aging
+my $Http_Request_Time = 0;      # used to store start time of last asynchronous http request
 my $Skip_Cleanup = 0;           # used to prevent cleanup when process aborted due to other instance running
 my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API (set in run_once())
 
 my $cv = AnyEvent->condvar;     # Event loop object
 my $ctx;                        # global AE logging context object
 my $Detect_Change_Timer;        # Timer for periodic network status check
-my $Api_Check_Timer;            # Timer for periodic API status check
+my $Api_Check_Timer;            # Timer for updating API status check before periodic network status check
 my $Lockfile_Handle;            # Keep exclusive lock alive until process exits
 my $Temporary_Disable_Timer;    # Timer for re-enabling monitor after GUI tasks
 my $TCP_Server_Handle;          # TCP server handle
@@ -106,6 +107,7 @@ sub http_req_async
 	my $url = shift;
 	$Current_Status = NET_UNCONFIRMED;
 	$Current_Update_Time = time();
+	$Http_Request_Time = $Current_Update_Time;
 	http_get $url, timeout => API_CHECK_TIMEOUT, sub {
 		my ($data, $headers) = @_;
 
@@ -162,7 +164,6 @@ sub tun_interface_exists
 }
 
 sub get_api_status 
-# supposed to be called only from AnyEvent timer event
 {
 	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
 	unless (open ROUTE, '<', '/proc/net/route') {
@@ -189,13 +190,13 @@ sub get_api_status
 	}
 
 	$Current_Status = quick_net_status();
-	$Current_Update_Time = time();
 	return $Current_Status;
 }
 
 sub quick_net_status
 {
 	my $net_status = NET_UNKNOWN;
+	$Current_Update_Time = time();
 
 	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
 	unless (open ROUTE, '<', '/proc/net/route') {
@@ -349,7 +350,6 @@ sub get_monitor_state
 	# refresh network status if cached data is over 20 seconds old
 	if ( time() - $Current_Update_Time > 20 ) {
 		$Current_Status = quick_net_status();
-		$Current_Update_Time = time();
 	}
 
 	# network part values = UNPROTECTED/PROTECTED/BROKEN/CRIPPLED/ERROR/UNKNOWN
@@ -806,7 +806,6 @@ sub undo_crippling_callback
 {
 	set_current_task_to_idle();
 	$Current_Status = quick_net_status();
-	$Current_Update_Time = time();
 	update_status_file($Current_Status);
 	popup_dialog($Current_Status);
 	return 0;
@@ -819,7 +818,6 @@ sub undo_crippling_on_error
 	my $msg = shift;
 	$ctx->log(error => "undo_crippling child process died unexpectedly: " . $msg);
 	$Current_Status = quick_net_status();
-	$Current_Update_Time = time();
 	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED || $Current_Status == NET_UNCONFIRMED) {
 		return 0;
 	} else {
@@ -933,7 +931,6 @@ sub retry_vpn_on_error
 	my $msg = shift;
 	$ctx->log(error => "Retry_vpn child process died unexpectedly: " . $msg);
 	$Current_Status = quick_net_status();
-	$Current_Update_Time = time();
 	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNCONFIRMED) {
 		return 0;
 	} elsif ($Current_Status == NET_UNPROTECTED) {
@@ -959,12 +956,18 @@ sub detect_change
 	$ctx->log(debug => "Refreshing network status") if DEBUG > 0;
 
 	$Current_Status = quick_net_status();
-	$Current_Update_Time = time();
 	log_net_status($Current_Status) if DEBUG > 0;
 	$ctx->log(debug => "\tprevious_status = " . get_status_text($Previous_Status) . " current_status = " . get_status_text($Current_Status) ) if DEBUG > 1;
 
 	my $tmp_previous = $Previous_Status;
 	$Previous_Status = $Current_Status;
+
+	# Start timer for http-request so that we receive a reply before the next detect_change 
+	undef $Api_Check_Timer;
+	$Api_Check_Timer = AnyEvent->timer(
+		after => DETECT_CHANGE_INTERVAL - API_CHECK_TIMEOUT,
+		cb => \&get_api_status,
+	);
 
 	# do not retry/redirect if previous state was CRIPPLED, redirect on next iteration
 	if ($Current_Status == NET_UNPROTECTED and $tmp_previous != NET_CRIPPLED) {
@@ -1082,15 +1085,14 @@ sub run_once
 
 	# Start periodic network status checking
 	$Detect_Change_Timer = AnyEvent->timer(
-		after => 60, # run after 60 sec the first time
-		interval => 60, # then every minute
+		after => DETECT_CHANGE_INTERVAL,
+		interval => DETECT_CHANGE_INTERVAL,
 		cb => \&detect_change,
 	);
 
-	# Start periodic API check status
+	# One-shot API check status
 	$Api_Check_Timer = AnyEvent->timer(
-		after => 0,
-		interval => API_CHECK_INTERVAL,
+		after => DETECT_CHANGE_INTERVAL - API_CHECK_TIMEOUT,
 		cb => \&get_api_status,
 	);
 
@@ -1145,12 +1147,12 @@ tcp_server(
 				$ctx->log(debug => "Take-a-break requested, Temporary disable_crippling") if DEBUG > 0;
 
 			} elsif ($buf eq "get-api-status") {
-				# if, for any reason, the saved status is older than needed we'll re-request it
-				if ($Current_Update_Time + API_CHECK_INTERVAL < time()) {
-					$Current_Status = get_api_status();
-					$Current_Update_Time = time();
+				# don't make new http request before previous has had time to arrive
+				if ($Http_Request_Time + API_CHECK_TIMEOUT < time()) {
+					$self->push_write(get_api_status() . "\n");
+				} else {
+					$self->push_write(quick_net_status() . "\n");
 				}
-				$self->push_write($Current_Status . "\n");
 
 			} elsif ($buf eq "get-net-status") {
 				$self->push_write(quick_net_status() . "\n");
@@ -1210,13 +1212,18 @@ tcp_server(
 				}
 				close VPN_INI;
 
-				# restart timer
+				# restart timers
 				undef $Detect_Change_Timer; # destroy current timer
 				$Detect_Change_Timer = AnyEvent->timer(
-					after => 40, # run after 40 sec the first time
-					interval => 60, # every minute
+					after => 40,
+					interval => DETECT_CHANGE_INTERVAL,
 					cb => \&detect_change,
 				);
+				$Api_Check_Timer = AnyEvent->timer(
+					after => 40 - API_CHECK_TIMEOUT,
+					cb => \&get_api_status,
+				);
+
 				$Monitor_Enabled = 1;
 				$self->push_write("ok - monitor enabled\n");
 				$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;

@@ -43,12 +43,12 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState take
 #use Data::Dumper;
 
 use constant {
-	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
-	INI_FILE => "/opt/PrivateOn-VPN/vpn-default.ini",
-	DEBUG => 2,
-	ENABLE_VPN => 1,
+	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
+	INI_FILE        => "/opt/PrivateOn-VPN/vpn-default.ini",
+	DEBUG           => 2,
+	ENABLE_VPN      => 1,
 	ENABLE_DUAL_VPN => 1,
-	ENABLE_TOR_VPN => 0
+	ENABLE_TOR_VPN  => 0
 };
 
 use constant {
@@ -62,6 +62,9 @@ use constant {
 	NET_UNKNOWN     => 100	
 };
 
+use constant {
+	API_CHECK_TIMEOUT       => 10
+};
 
 ################              Setup Window              ################
 sub NEW {
@@ -76,7 +79,7 @@ sub NEW {
 	# update status text timer
 	this->{internalTimer} = Qt::Timer(this);  # create internal timer
 	this->connect(this->{internalTimer}, SIGNAL('timeout()'), SLOT('updateStatus()'));
-	this->{internalTimer}->start(5000);	  # emit signal every 5 second
+	this->{internalTimer}->start(20*1000);	  # emit signal every 20 seconds
 
 	# button enable/disable timer
 	this->{buttonTimer} = Qt::Timer(this);
@@ -132,7 +135,8 @@ sub NEW {
 	this->{statusOutput} = $status;
 
 	# show VPN/network/monitor status and retrieve api_status
-	my $api_status = showNetStatus();
+	my $api_status = getApiStatus();
+	showNetStatus($api_status);
 	if ($api_status == NET_UNCONFIRMED) {
 		this->{internalTimer}->start(1000);
 	}
@@ -316,8 +320,8 @@ sub setStatusText {
 
 
 sub showNetStatus {
+	my ($api_status) = @_;
 	my $status_text;
-	my $api_status = getApiStatus();
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) {
 		$status_text = "The network is online\n";
@@ -685,7 +689,7 @@ sub updateDefaultVpn {
 
 	undoCrippling() if (getCripplingStatus(DEBUG));
 
-	my $api_status = getApiStatus();
+	my $api_status = getNetStatus();
 	if ($api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
 		$status_text = "The VPN connection is deactivating,\n";
 		$status_text .= "Please hold on.\n";
@@ -1208,11 +1212,12 @@ sub updateStatus {
 	my $status_text_changed = 0;
 	my $pty = this->{pty};
 	my $active_flag = $pty->is_active();
+	my $current_status;
 
 	# initialize persistent variables
 	state $previous_status = 100;
-	state $last_pty_read = 4102444800000; 	# epoch year 2100
 	state $previous_state_string = "";
+	state $last_pty_read = 0; 		# epoch year 1970
 	state $last_state_read = 0; 		# epoch year 1970
 	state $unconfirmed_counter = 0;
 
@@ -1229,9 +1234,10 @@ sub updateStatus {
 		print "#" if DEBUG > 1;
 	} else {
 		if ( $current_time - $last_pty_read > 2*60 ) { # keep text for 2 min
-			my $api_status = showNetStatus();
-			if ($api_status == NET_PROTECTED) {
-				this->{internalTimer}->start(5*60*1000);
+			my $current_status = getApiStatus();
+			showNetStatus($current_status);
+			if ($current_status == NET_PROTECTED) {
+				this->{internalTimer}->start(60*1000);
 			} else {
 				this->{internalTimer}->start(60*1000);
 			}
@@ -1244,7 +1250,9 @@ sub updateStatus {
 		print "." if DEBUG > 1;
 	}
 
-	my $current_status = getNetStatus();
+	if (not defined $current_status) {
+		$current_status = getNetStatus();
+	}
 	my $tmp_previous = $previous_status;
 	$previous_status = $current_status;
 
@@ -1272,17 +1280,22 @@ sub updateStatus {
 			$status_text .= "Network placed in safemode, check VPN settings.\n";
 			$status_text_changed = 1;
 		} elsif ($current_status == NET_UNCONFIRMED && $tmp_previous != NET_UNCONFIRMED) {
-			++$unconfirmed_counter;
-			if ($unconfirmed_counter < 5) {
-				# ignore status change for now
+			$unconfirmed_counter++;
+			if ($unconfirmed_counter < API_CHECK_TIMEOUT) {
+				# ignore status change until request has timed out
 				$current_status = $tmp_previous; 
 				$previous_status = $tmp_previous;
-			}
-			else {
-				$status_text .= "Network status is unconfirmed, please wait for status update.\n";
+				this->{internalTimer}->start(1000);
+			} else {
+				$status_text .= "Network status is unconfirmed.\n";
 				$status_text_changed = 1;
 			}
 		} elsif ($current_status == NET_PROTECTED && $tmp_previous != NET_PROTECTED) {
+			# check API after VPN activation
+			$current_status = getApiStatus();
+			if ($current_status == NET_UNCONFIRMED) {
+				this->{internalTimer}->start(1000);
+			}
 			this->{refreshButton}->setEnabled(1);
 			this->{buttonTimer}->stop();
 			this->{turnoffButton}->setEnabled(1);
