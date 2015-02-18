@@ -26,6 +26,7 @@ use sigtrap qw(die normal-signals);
 
 use lib '/opt/PrivateOn-VPN/vpn-monitor/';
 use Fcntl qw(:flock);
+use File::Basename qw(dirname);
 use File::Path qw(make_path);
 use File::stat;
 use IO::Interface::Simple;
@@ -425,7 +426,7 @@ sub get_lock
 {
 	my $uncripple_option = shift;
 
-	system("/usr/bin/mkdir -p /var/run/PrivateOn");
+	eval { make_path( dirname(LOCK_FILE) ); };
 	unless (open $Lockfile_Handle, ">>", LOCK_FILE) {
 		$Skip_Cleanup = 1;
 		if ($uncripple_option) {
@@ -523,7 +524,67 @@ sub write_dispatcher
 }
 
 
-sub read_api_url_from_inifile
+sub read_ini_file
+{
+	# Parse ini file for the following keys: uuid, remote, url or monitor
+	my $key = shift;
+	unless ( defined $key ) { return ('', 1); };
+
+	my $value;
+	my $error = 0;
+	my $vpn_ini;
+	if (open $vpn_ini, "<" . INI_FILE) {
+		if ($key eq "uuid") {
+			while (<$vpn_ini>) {
+				if (/^\s*uuid\s*=\s*([-0-9a-fA-F]+)/) {
+					$value = $1;
+					last;
+				}
+			}
+		} elsif ($key eq "remote") {
+			while (<$vpn_ini>) {
+				if (/^\s*remote\s*=\s*([1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*)/) {
+					$value = $1;
+					last;
+				}
+			}
+		} elsif ($key eq 'url') {
+			while (<$vpn_ini>) {
+				if (/^\s*url\s*=\s*(.*)/) {
+					$value = $1;
+					last;
+				}
+			}
+		} elsif ($key eq 'monitor') {
+			while (<$vpn_ini>) {
+				if (/^\s*monitor=\s*([a-zA-Z]+)/) {
+					$value = $1;
+					last;
+				}
+			}
+		}
+		close $vpn_ini;
+	} else {
+		$error = $!;
+		if ( -e INI_FILE ) {
+			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $error);
+		} else {
+			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
+			$ctx->log(info => "   Fire up the GUI and press Server to download server list and create ini file.");
+		}
+	}
+
+	# always return error if key-value pair not found
+	unless ( defined $value ) { 
+		$value = '';
+		unless ($error) { $error = 1; };
+	}
+
+	return ($value, $error);
+}
+
+
+sub read_api_url_from_ini_file
 {
 	my $vpn_ini;
 	unless (open $vpn_ini, "<" . INI_FILE) {
@@ -1081,7 +1142,7 @@ sub run_once
 	}
 
 	# read API check URL from inifile to global variable
-	read_api_url_from_inifile();
+	read_api_url_from_ini_file();
 
 	# Start periodic network status checking
 	$Detect_Change_Timer = AnyEvent->timer(
