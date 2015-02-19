@@ -1,0 +1,64 @@
+.\" Manpage for vpn_monitor.pl
+.\"
+.\" Copyright (C) 2014-2015 PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+.\" All rights reserved. Use is subject to license terms.
+.TH man 8 "01 Apr 2015" "0.9" "vpn_monitor.pl man page"
+.SH NAME
+vpn_monitor.pl \- PrivateOn VPN Monitor
+.SH SYNOPSIS
+.B vpn_monitor.pl
+[option]
+.sp
+.B vpn_monitor.pl \-\-check
+.br
+.B vpn_monitor.pl \-\-disable
+.br
+.B vpn_monitor.pl \-\-enable
+.br
+.B vpn_monitor.pl \-\-help
+.br
+.B vpn_monitor.pl \-\-start
+.br
+.B vpn_monitor.pl \-\-stop
+.br
+.B vpn_monitor.pl \-\-uncripple
+.br
+.B vpn_monitor.pl \-\-watch
+.SH DESCRIPTION
+PrivateOn VPN Monitor actively monitors that your VPN connection is active and functioning. 
+.br 
+If the vpn is inactive, the last used VPN connection is retried. If this fails, the network is crippled. 
+.br 
+Crippling can be undone from the vpn-gui front-end or by using the \fB\-\-uncripple\fR option.
+.PP
+The default action is to not daemonize and run in the foreground.
+.SH OPTIONS
+All options are mutually exclusive.
+.PP
+.IP "\fB\-c\fR, \fB\-\-check\fR"
+Check if VPN Monitor is running and start/restart if needed.
+.IP "\fB\-d\fR, \fB\-\-disable\fR"
+Disable active monitoring.
+.IP "\fB\-e\fR, \fB\-\-enable\fR"
+Enable active monitoring.
+.IP "\fB\-h\fR, \fB\-\-help\fR"
+Display this message and exit.
+.IP "\fB\-s\fR, \fB\-\-start\fR"
+Same as \fB\-\-check\fR.
+.IP "\fB\-k\fR, \fB\-\-stop\fR"
+Stop VPN Monitor service.
+.IP "\fB\-u\fR, \fB\-\-uncripple\fR"
+Undo network crippling.
+.IP "\fB\-u\fR, \fB\-\-watch\fR"
+Periodically displays response to 'monitor-state' query.
+.SH SEE ALSO
+vpn_gui.pl(8)
+.SH AUTHOR
+Mikko Rautiainen (info@tietosuojakone.fi)
+.SH AVAILABILITY
+The vpn_monitor.pl command is part of the PrivateOn VPN Manager package
+.br 
+and is available from
+.UR https://software.opensuse.org/package/PrivateOn-VPN
+Tietosuojakone Oy's Repository
+.UE .

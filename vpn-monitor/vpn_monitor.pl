@@ -394,14 +394,26 @@ sub parse_command_line_arguments
 		if ( /^(-\?|-h|--help)$/ ) {
 			$Skip_Cleanup = 1;
 			print STDERR "Usage: vpn-monitor.pl [OPTION]\n" .
-			   "  -u or --uncripple  Remove network crippling and start daemon\n" .
-			   "  -h or --help       Print this message and exit\n";
+			   "  -c, --check      Start if VPN Monitor is not running\n" .
+			   "  -d, --disable    Disable active monitoring\n" .
+			   "  -e, --enable     Enable active monitoring\n" .
+			   "  -h, --help       Print this message and exit\n" .
+			   "  -s, --start      Same as --check\n" .
+			   "  -k, --stop       Stop VPN Monitor service\n" .
+			   "  -u, --uncripple  Remove network crippling and start daemon\n" .
+			   "  -w, --watch      Periodically displays monitor information\n";
 			exit 0;
-		} elsif ( /^(-u|--uncripple)$/ ) {
-			return 1;
-		} elsif ( /^(-s|--start|-c|--check)$/ ) {
+		} elsif ( /^(-c|--check|-s|--start)$/ ) {
 			$Skip_Cleanup = 1;
 			exec('/usr/bin/perl ' . PATH . 'vpn-monitor/check_monitor.pl');
+		} elsif ( /^(-d|--disable)$/ ) {
+			$Skip_Cleanup = 1;
+			send_command_using_netcat('disable-monitor');
+			exit $?; 
+		} elsif ( /^(-e|--enable)$/ ) {
+			$Skip_Cleanup = 1;
+			send_command_using_netcat('enable-monitor');
+			exit $?; 
 		} elsif ( /^(-k|--stop)$/ ) {
 			$Skip_Cleanup = 1;
 			if (system('/sbin/service monit status > /dev/null 2>&1') == 0) {
@@ -411,17 +423,11 @@ sub parse_command_line_arguments
 			}
 			print "Stopping service " . SERVICE_NAME . "\n";
 			exec('/sbin/service ' . SERVICE_NAME . ' stop');
-		} elsif ( /^(-e|--enable)$/ ) {
-			$Skip_Cleanup = 1;
-			send_command_using_netcat('enable-monitor');
-			exit $?; 
-		} elsif ( /^(-d|--disable)$/ ) {
-			$Skip_Cleanup = 1;
-			send_command_using_netcat('disable-monitor');
-			exit $?; 
+		} elsif ( /^(-u|--uncripple)$/ ) {
+			return 1;
 		} elsif ( /^(-w|--watch)$/ ) {
 			$Skip_Cleanup = 1;
-			exec('/usr/bin/perl ' . PATH . 'vpn-monitor/watch_monitor.sh');
+			exec('/bin/bash ' . PATH . 'vpn-monitor/watch_monitor.sh');
 		}
 	}
 	return 0;
