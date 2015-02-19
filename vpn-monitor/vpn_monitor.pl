@@ -47,14 +47,15 @@ use AnyEvent::HTTP;
 use POE;
 
 use constant {
-	PATH          => "/opt/PrivateOn-VPN/",
-	STATUS_FILE   => "/var/run/PrivateOn/.status",
-	LOCK_FILE     => "/var/run/PrivateOn/.lock",
-	PID_FILE      => "/var/run/PrivateOn/vpn-monitor.pid",
-	LOG_FILE      => "/var/log/PrivateOn.log",
-	DISPATCH_FILE => "/etc/NetworkManager/dispatcher.d/vpn-up",
-	INI_FILE      => "/opt/PrivateOn-VPN/vpn-default.ini",
-	VERSION       => "0.9",
+	PATH          => '/opt/PrivateOn-VPN/',
+	STATUS_FILE   => '/var/run/PrivateOn/.status',
+	LOCK_FILE     => '/var/run/PrivateOn/.lock',
+	PID_FILE      => '/var/run/PrivateOn/vpn-monitor.pid',
+	LOG_FILE      => '/var/log/PrivateOn.log',
+	DISPATCH_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
+	INI_FILE      => '/opt/PrivateOn-VPN/vpn-default.ini',
+	SERVICE_NAME  => 'vpnmonitor',
+	VERSION       => '0.9',
 	DEBUG         => 2
 };
 
@@ -398,13 +399,57 @@ sub parse_command_line_arguments
 			exit 0;
 		} elsif ( /^(-u|--uncripple)$/ ) {
 			return 1;
+		} elsif ( /^(-s|--start|-c|--check)$/ ) {
+			$Skip_Cleanup = 1;
+			exec('/usr/bin/perl ' . PATH . 'vpn-monitor/check_monitor.pl');
+		} elsif ( /^(-k|--stop)$/ ) {
+			$Skip_Cleanup = 1;
+			if (system('/sbin/service monit status > /dev/null 2>&1') == 0) {
+				print "\nInstructing monit to stop monitoring " . SERVICE_NAME . "\n";
+				system('/usr/bin/monit unmonitor ' . SERVICE_NAME );
+				print "\n";
+			}
+			print "Stopping service " . SERVICE_NAME . "\n";
+			exec('/sbin/service ' . SERVICE_NAME . ' stop');
+		} elsif ( /^(-e|--enable)$/ ) {
+			$Skip_Cleanup = 1;
+			send_command_using_netcat('enable-monitor');
+			exit $?; 
+		} elsif ( /^(-d|--disable)$/ ) {
+			$Skip_Cleanup = 1;
+			send_command_using_netcat('disable-monitor');
+			exit $?; 
+		} elsif ( /^(-w|--watch)$/ ) {
+			$Skip_Cleanup = 1;
+			exec('/usr/bin/perl ' . PATH . 'vpn-monitor/watch_monitor.sh');
 		}
 	}
 	return 0;
 }
 
 
-sub uncripple_using_netcat
+sub send_command_using_netcat
+{
+	my $command = shift;
+	
+	unless ( -e PID_FILE ) {
+		print "vpn_monitor.pl is not running\nCommand ignored\n";
+		exit 100;
+	}
+
+	print "Attempting " . $command . " by sending command to existing instance\n";
+	my $uncripple_command = "/usr/bin/echo '" . $command . "' | /usr/bin/nc " . IPC_HOST . " " . IPC_PORT;
+	if ( system($uncripple_command) eq 0 ) {
+		print "Successfully sent " . $command . " command\n";
+		return 0;
+	} else {
+		print "Command " . $command . " failed\n";
+	}
+	return 1;
+}
+
+
+sub send_uncripple_using_netcat
 {
 	$ctx->log(info => "Attempting uncrippling by sending command");
 	$ctx->log(info => "\tfrom process " . $$ . " to running instance");
@@ -430,7 +475,7 @@ sub get_lock
 	unless (open $Lockfile_Handle, ">>", LOCK_FILE) {
 		$Skip_Cleanup = 1;
 		if ($uncripple_option) {
-			my $return_code = uncripple_using_netcat();
+			my $return_code = send_uncripple_using_netcat();
 			$ctx->log(info => "Exiting uncrippling process " . $$ . ".");
 			exit $return_code;
 		}
@@ -441,7 +486,7 @@ sub get_lock
 	unless ( flock($Lockfile_Handle, LOCK_EX|LOCK_NB) ) {
 		$Skip_Cleanup = 1;
 		if ($uncripple_option) {
-			my $return_code = uncripple_using_netcat();
+			my $return_code = send_uncripple_using_netcat();
 			$ctx->log(info => "Exiting uncrippling process " . $$ . ".");
 			exit $return_code;
 		}
