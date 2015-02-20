@@ -23,7 +23,7 @@ use constant {
 	TIMEOUT_SINCE_LAST_START => 20, # seconds since the last start to allow new instance to run
 
 	MAX_CHECK_ITERATIONS => 3, # try to make the system up and running for that many times
-	
+
 	QUERY_HOST => 'localhost',
 	QUERY_PORT => 44244,
 	QUERY_TIMEOUT => 2,   # timeout to wait for TCP reply from vpnmonitor
@@ -32,15 +32,16 @@ use constant {
 	API_CHECK_TIMEOUT => 5, # timeout to wait for API reply (check url)
 
 	MONITOR_SERVICE_NAME => 'vpnmonitor',
-	OPENVPN_BINARY => '/usr/sbin/openvpn',
-	MONITOR_SCRIPT => '/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl',
-	MONITOR_DEFAULT => '/opt/PrivateOn-VPN/vpn-default.ini',
+	MONITOR_DAEMON => '/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl',
+	MONITOR_DEFAULT => '/etc/PrivateOn/vpn-default.ini',
 
 	MONIT_SERVICE_NAME => 'monit',
 	MONIT_BINARY => '/usr/bin/monit',
 	MONIT_CONFIG => '/etc/monitrc',
+	MONIT_INCLUDE => '/etc/monit.d/PrivateOn',
 	MONIT_PROCESS_NAME => 'vpnmonitor',
 
+	OPENVPN_BINARY => '/usr/sbin/openvpn',
 	DISPATCHER_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
 };
 
@@ -192,7 +193,7 @@ sub openvpn_is_running
 
 sub monitor_is_running
 {
-	my $regex_line = quotemeta(MONITOR_SCRIPT);
+	my $regex_line = quotemeta(MONITOR_DAEMON);
 	my $regex = qr/$regex_line/;
 	my $monitor_pid = find_pid($regex);
 	if ($monitor_pid) {
@@ -228,6 +229,10 @@ sub monit_config_good
 	if ($? != 0) {
 		debug(1, 'WARNING: Monit config seems broken.');
 		return 0;
+	}
+
+	if (-e MONIT_INCLUDE) {
+		return 1;
 	}
 
 	my $check_found = 0;
