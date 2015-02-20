@@ -53,7 +53,7 @@ use constant {
 	PID_FILE      => '/var/run/PrivateOn/vpn-monitor.pid',
 	LOG_FILE      => '/var/log/PrivateOn.log',
 	DISPATCH_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
-	INI_FILE      => '/opt/PrivateOn-VPN/vpn-default.ini',
+	INI_FILE      => '/etc/PrivateOn/vpn-default.ini',
 	SERVICE_NAME  => 'vpnmonitor',
 	VERSION       => '0.9',
 	DEBUG         => 2
@@ -540,19 +540,11 @@ sub set_current_task_to_idle
 
 sub write_dispatcher 
 {
-	my $uuid;
-	my $vpn_ini;
-	unless (open $vpn_ini, "<" . INI_FILE) {
-		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+	my ($uuid, $error) = read_ini_file('uuid');
+	if ( ($error) || ($uuid eq '') ) {
+		$ctx->log(info => "Dispatch file was not written because ini file parsing failed.");
 		return 1;
 	}
-	while (<$vpn_ini>) {
-		if (/uuid=(.+)/) {
-			$uuid = $1;
-			last;
-		}
-	}
-	close $vpn_ini;
 
 	# write dispatcher file with "up|vpn-down" case
 	my $dfh;
@@ -637,27 +629,9 @@ sub read_ini_file
 
 sub read_api_url_from_ini_file
 {
-	my $vpn_ini;
-	unless (open $vpn_ini, "<" . INI_FILE) {
-		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-		$ctx->log(info => "   Disabling API check.");
-		$Url_For_Api_Check = 'none';
-		return 2;
-	}
+	my ($url, $error) = read_ini_file('url');
 
-	my $url = 'none';
-	# read the first 'url' entry in the inifile
-	while (<$vpn_ini>) {
-		if (/^\s*url\s*=\s*(.*)\s*$/) {
-		$url = $1;
-		$ctx->log(debug => "Found URL $url") if DEBUG > 0;
-		last;
-		}
-	}
-	close $vpn_ini;
-	
-	if ( !defined($url) ) {
-		$ctx->log(error => "Unexpected error while reading " . INI_FILE . ".  Reason: " . $!);
+	if ($error) {
 		$ctx->log(info => "   Disabling API check.");
 		$Url_For_Api_Check = 'none';
 		return 2;
@@ -800,21 +774,11 @@ sub add_route_to_vpn_server
 	unless ( defined $local_gateway_ip && defined $active_nic ) { return 1; };
 
 	# read vpn server ip
-	my $vpn_server_ip;
-	my $vpn_ini;
-	if (open $vpn_ini, "<" . INI_FILE) {
-		while (<$vpn_ini>) {
-			if (/^\s*remote\s*=\s*([1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*\.[1-9][0-9]*)\s*$/) {
-				$vpn_server_ip = $1;
-				last;
-			}
-		}
-		close $vpn_ini;
-	} else {
-		$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+	my ($vpn_server_ip, $error) = read_ini_file('remote');
+	if ( ($error) || ($vpn_server_ip eq '') ) {
+		$ctx->log(error => "Failed to add route because ini file parsing failed.");
 		return 1;
 	}
-	unless ( defined $vpn_server_ip) { return 1; };
 
 	# remove old routes to vpn server
 	my $status = 0;
@@ -829,7 +793,7 @@ sub add_route_to_vpn_server
 	system("/sbin/route add " . $vpn_server_ip . " gw " . $local_gateway_ip . " dev " . $active_nic . " 2>/dev/null");
 	$status = $? >> 8; # $? >> 8 is the exit status, see perldoc -f system
 	if ($status) {
-		$ctx->log(error => "Failed to add route, error($status): dest=$vpn_server_ip gw=$local_gateway_ip dev=$active_nic" );
+		$ctx->log(error => "Failed to add route, error($status): dest=$vpn_server_ip gw=$local_gateway_ip dev=$active_nic");
 	}
 
 	return $status;
@@ -1139,19 +1103,32 @@ sub run_once
 	}
 
 	if ( !-e STATUS_FILE) {
+		unless ( -e INI_FILE ) {
+			$Monitor_Enabled = 0;
+			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
+			$ctx->log(info => "   Fire up the GUI and press Server to download server list and create ini file.");
+			$ctx->log(info => "Active monitoring disabled because ini file parsing failed.");
+			if ($uncripple_option) { spawn_undo_crippling(); };
+			return 1;
+		}
+
 		my $vpn_ini;
 		unless (open $vpn_ini, "<" . INI_FILE) {
+			$Monitor_Enabled = 0;
 			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+			$ctx->log(info => "Active monitoring disabled because ini file parsing failed.");
 			if ($uncripple_option) { spawn_undo_crippling(); };
-			return -1;
+			return 1;
 		}
 		my @vpn_ini_lines = <$vpn_ini>;
 		close $vpn_ini;
 
 		unless (open VPN_INI, ">" . INI_FILE) {
+			$Monitor_Enabled = 0;
 			$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
+			$ctx->log(info => "Active monitoring disabled because ini file writing failed.");
 			if ($uncripple_option) { spawn_undo_crippling(); };
-			return -1;
+			return 1;
 		}
 		my $has_been_written = 0;
 		foreach my $line (@vpn_ini_lines) {
@@ -1167,30 +1144,31 @@ sub run_once
 		}
 		close VPN_INI;
 
-		# write uuid from INI file to dispatcher file
-		write_dispatcher();
-
 	} else { # status file exists
 		# assign variable from file
 		$Previous_Status = get_previous_status_from_file();
 
-		my $vpn_ini;
-		unless (open $vpn_ini, "<" . INI_FILE) {
-			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
+		my ($monitor, $error) = read_ini_file('monitor');
+		if ( ($error) || ($monitor eq '') ) {
+			$Monitor_Enabled = 0;
+			$ctx->log(info => "Active monitoring disabled because ini file parsing failed.");
 			if ($uncripple_option) { spawn_undo_crippling(); };
-			return -1;
+			return 1;
 		}
-		while (<$vpn_ini>) {
-			if (/monitor=([a-zA-Z]+)/) {
-				if ($1 =~ /disabled/) {
-					$Monitor_Enabled = 0;
-				} else { # any value other than "disabled" is "enabled"
-					$Monitor_Enabled = 1;
-				}
-			}
+
+		if ($monitor =~ /disabled/) {
+			$Monitor_Enabled = 0;
+			$ctx->log(info => "Restoring active monitoring to disabled state.");
+			if ($uncripple_option) { spawn_undo_crippling(); };
+			return 1;
 		}
-		close $vpn_ini;
 	}
+
+	$Monitor_Enabled = 1;
+	$ctx->log(info => "Active monitoring enabled.");
+
+	# write uuid from INI file to dispatcher file
+	write_dispatcher();
 
 	# read API check URL from inifile to global variable
 	read_api_url_from_ini_file();
