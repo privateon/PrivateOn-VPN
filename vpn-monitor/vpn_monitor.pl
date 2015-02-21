@@ -386,6 +386,103 @@ sub log_net_status
 }
 
 
+sub take_a_break
+{
+	# kill vpn_retry instance if running
+	system("/bin/pkill -9 vpn_retry");
+
+	# destroy timer / re-enable crippling after 1 minute
+	undef $Temporary_Disable_Timer; 
+	$Temporary_Disable_Timer = AnyEvent->timer(
+		after => 60, 
+		cb => sub {
+			$Temporary_Disable = 0;
+			$Current_Task = "idle";
+			$ctx->log(debug => "Temporary disable crippling ended") if DEBUG > 0;
+		},
+	);
+	$ctx->log(debug => "Take-a-break requested, Temporary disable crippling") if DEBUG > 0;
+}
+
+
+sub change_active_monitoring
+{
+	my $enable_monitor = shift;
+
+	# disable temporary disable
+	$Temporary_Disable = 0;
+
+	# kill vpn_retry instance if running
+	system("/bin/pkill -9 vpn_retry");
+
+	if ($enable_monitor) {
+		# restart timers
+		undef $Detect_Change_Timer;
+		$Detect_Change_Timer = AnyEvent->timer(
+			after => 40,
+			interval => DETECT_CHANGE_INTERVAL,
+			cb => \&detect_change,
+		);
+		undef $Api_Check_Timer;
+		$Api_Check_Timer = AnyEvent->timer(
+			after => 40 - API_CHECK_TIMEOUT,
+			cb => \&get_api_status,
+		);
+
+		$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
+	} else {
+		undef $Detect_Change_Timer;
+		undef $Api_Check_Timer;
+	}
+
+	# read and update ini
+	my $vpn_ini;
+	unless (open $vpn_ini, "<" . INI_FILE) {
+		my $error = $!;
+		if ( -e INI_FILE ) {
+			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $error);
+		} else {
+			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
+			$ctx->log(info => "   Fire up the GUI and press Server to download server list and create ini file.");
+		}
+		$ctx->log(info => "Active monitoring state not changed because ini file parsing failed.");
+		return 1;
+	}
+	my @vpn_ini_lines = <$vpn_ini>;
+	close $vpn_ini;
+
+	unless (open VPN_INI, ">" . INI_FILE) {
+		$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
+		$ctx->log(info => "Active monitoring state not changed because ini file writing failed.");
+		return 1;
+	}
+
+	my $has_been_written = 0;
+	foreach my $line (@vpn_ini_lines) {
+		if ($line =~ /monitor/) {
+			if ($enable_monitor) {
+				print VPN_INI "monitor=enabled\n";
+			} else {
+				print VPN_INI "monitor=disabled\n";
+			}
+			$has_been_written = 1;
+		} else {
+			print VPN_INI $line;
+		}
+	}
+	if ($has_been_written == 0) {
+		if ($enable_monitor) {
+			print VPN_INI "monitor=enabled\n";
+		} else {
+			print VPN_INI "monitor=disabled\n";
+		}
+	}
+	close VPN_INI;
+
+	return 0;
+}
+
+
 ################	    Helper subroutines		################
 
 sub parse_command_line_arguments
@@ -1216,26 +1313,6 @@ tcp_server(
 				$Current_Update_Time = 0;
 				$self->push_write("refresh ok\n");
 
-			} elsif ($buf eq "take-a-break") {
-				$Temporary_Disable = 1; # disable crippling
-
-				# kill vpn_retry instance if running
-				system("/bin/pkill -9 vpn_retry");
-				$Current_Task = "temporary";
-
-				# destroy timer / re-enable crippling after 1 minute
-				undef $Temporary_Disable_Timer; 
-				$Temporary_Disable_Timer = AnyEvent->timer(
-					after => 60, 
-					cb => sub {
-						$Temporary_Disable = 0;
-						$Current_Task = "idle";
-						$ctx->log(debug => "Temporary disable_crippling ended") if DEBUG > 0;
-					},
-				);
-				$self->push_write("monitoring disabled for 1 minute\n");
-				$ctx->log(debug => "Take-a-break requested, Temporary disable_crippling") if DEBUG > 0;
-
 			} elsif ($buf eq "get-api-status") {
 				# don't make new http request before previous has had time to arrive
 				if ($Http_Request_Time + API_CHECK_TIMEOUT < time()) {
@@ -1266,96 +1343,26 @@ tcp_server(
 				spawn_undo_crippling();
 				$self->push_write("ok - called spawn_undo_crippling()\n");
 
+			} elsif ($buf eq "take-a-break") {
+				$Temporary_Disable = 1; # disable crippling
+				take_a_break();
+				$self->push_write("monitoring disabled for 1 minute\n");
+
 			} elsif ($buf eq "enable-monitor") {
-				# enable check
-				$Temporary_Disable = 0;
-
-				# kill vpn_retry instance if running
-				system("/bin/pkill -9 vpn_retry");
-
-				my $vpn_ini;
-				unless (open $vpn_ini, "<" . INI_FILE) {
-					$self->push_write("not ok - see error log\n");
-					$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-					return;
-				}
-				my @vpn_ini_lines = <$vpn_ini>;
-				close $vpn_ini;
-				unless (open VPN_INI, ">" . INI_FILE) {
-					$self->push_write("not ok - see error log\n");
-					$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
-					return;
-				}
-
-				# update ini
-				my $has_been_written = 0;
-				foreach my $line (@vpn_ini_lines) {
-					if ($line =~ /monitor/) {
-						print VPN_INI "monitor=enabled\n";
-						$has_been_written = 1;
-					} else {
-						print VPN_INI $line;
-					}
-				}
-				if ($has_been_written == 0) {
-					print VPN_INI "monitor=enabled\n";
-				}
-				close VPN_INI;
-
-				# restart timers
-				undef $Detect_Change_Timer; # destroy current timer
-				$Detect_Change_Timer = AnyEvent->timer(
-					after => 40,
-					interval => DETECT_CHANGE_INTERVAL,
-					cb => \&detect_change,
-				);
-				$Api_Check_Timer = AnyEvent->timer(
-					after => 40 - API_CHECK_TIMEOUT,
-					cb => \&get_api_status,
-				);
-
 				$Monitor_Enabled = 1;
-				$self->push_write("ok - monitor enabled\n");
-				$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
+				if (change_active_monitoring($Monitor_Enabled) == 0) {
+					$self->push_write("ok - monitor enabled\n");
+				} else {
+					$self->push_write("not ok - see error log\n");
+				}
 
 			} elsif ($buf eq "disable-monitor") {
-				$Temporary_Disable = 0;
 				$Monitor_Enabled = 0;
-
-				# kill vpn_retry instance if running
-				system("/bin/pkill -9 vpn_retry");
-
-				update_status_file(999);
-				my $vpn_ini;
-				unless (open $vpn_ini, "<" . INI_FILE) {
+				if (change_active_monitoring($Monitor_Enabled) == 0) {
+					$self->push_write("ok - monitor disabled\n");
+				} else {
 					$self->push_write("not ok - see error log\n");
-					$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $!);
-					return 0;
 				}
-				my @vpn_ini_lines = <$vpn_ini>;
-				close $vpn_ini;
-				unless (open VPN_INI, ">" . INI_FILE) {
-					$self->push_write("not ok - see error log\n");
-					$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
-					return 0;
-				}
-
-				# update ini
-				my $has_been_written = 0;
-				foreach my $line (@vpn_ini_lines) {
-					if ($line =~ /monitor/) {
-						print VPN_INI "monitor=disabled\n";
-						$has_been_written = 1;
-					} else {
-						print VPN_INI $line;
-					}
-				}
-				if ($has_been_written == 0) {
-					print VPN_INI "monitor=disabled\n";
-				}
-				close VPN_INI;
-				$self->push_write("ok - monitor disabled\n");
-				$ctx->log(debug => "Monitor disabled") if DEBUG > 0;
 
 			} elsif ($buf eq "monitor-state") {
 				$self->push_write(get_monitor_state() . "\n");
