@@ -9,7 +9,7 @@
 #
 
 #
-#		/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
+#		/opt/PrivateOn-VPN/vpn-monitor/vpn-monitor
 #
 #   This daemon verifies that a VPN connection is active and functioning.
 #   If the vpn is inactive, the last used VPN connection is retried. 
@@ -33,6 +33,7 @@ use IO::Interface::Simple;
 use JSON qw(decode_json);
 use JSON::backportPP;
 use No::Worries::PidFile qw(pf_check pf_set pf_unset);
+use POSIX qw(geteuid);
 use Try::Tiny;
 use UI::Dialog::Backend::KDialog;
 
@@ -445,7 +446,7 @@ sub change_active_monitoring
 			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
 			$ctx->log(info => "   Fire up the GUI and press Server to download server list and create ini file.");
 		}
-		$ctx->log(info => "Active monitoring state not changed because ini file parsing failed.");
+		$ctx->log(info => "Active monitoring state change is not persistent because ini file parsing failed.");
 		return 1;
 	}
 	my @vpn_ini_lines = <$vpn_ini>;
@@ -453,7 +454,7 @@ sub change_active_monitoring
 
 	unless (open VPN_INI, ">" . INI_FILE) {
 		$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
-		$ctx->log(info => "Active monitoring state not changed because ini file writing failed.");
+		$ctx->log(info => "Active monitoring state change is not persistent because ini file writing failed.");
 		return 1;
 	}
 
@@ -485,22 +486,30 @@ sub change_active_monitoring
 
 ################	    Helper subroutines		################
 
+sub print_usage_message
+{
+	print STDERR "Usage: vpn-monitor.pl [OPTION]\n" .
+	   "  -c, --check      Start if VPN Monitor is not running\n" .
+	   "  -d, --disable    Disable active monitoring\n" .
+	   "  -e, --enable     Enable active monitoring\n" .
+	   "  -f, --foreground Run as a foreground process\n" .
+	   "  -h, --help       Print this message and exit\n" .
+	   "  -s, --start      Same as --check\n" .
+	   "  -k, --stop       Stop VPN Monitor service\n" .
+	   "  -u, --uncripple  Remove network crippling and start daemon\n" .
+	   "  -w, --watch      Periodically displays monitor information\n";
+}
+
+
 sub parse_command_line_arguments
 {
 	foreach (@ARGV) {
 		if ( /^(-\?|-h|--help)$/ ) {
 			$Skip_Cleanup = 1;
-			print STDERR "Usage: vpn-monitor.pl [OPTION]\n" .
-			   "  -c, --check      Start if VPN Monitor is not running\n" .
-			   "  -d, --disable    Disable active monitoring\n" .
-			   "  -e, --enable     Enable active monitoring\n" .
-			   "  -h, --help       Print this message and exit\n" .
-			   "  -s, --start      Same as --check\n" .
-			   "  -k, --stop       Stop VPN Monitor service\n" .
-			   "  -u, --uncripple  Remove network crippling and start daemon\n" .
-			   "  -w, --watch      Periodically displays monitor information\n";
+			print_usage_message();
 			exit 0;
 		} elsif ( /^(-c|--check|-s|--start)$/ ) {
+			exit_if_not_root();
 			$Skip_Cleanup = 1;
 			exec('/usr/bin/perl ' . PATH . 'vpn-monitor/check_monitor.pl');
 		} elsif ( /^(-d|--disable)$/ ) {
@@ -511,7 +520,10 @@ sub parse_command_line_arguments
 			$Skip_Cleanup = 1;
 			send_command_using_netcat('enable-monitor');
 			exit $?; 
+		} elsif ( /^(-f|--foreground)$/ ) {
+			return 0;
 		} elsif ( /^(-k|--stop)$/ ) {
+			exit_if_not_root();
 			$Skip_Cleanup = 1;
 			if (system('/sbin/service monit status > /dev/null 2>&1') == 0) {
 				print "\nInstructing monit to stop monitoring " . SERVICE_NAME . "\n";
@@ -521,13 +533,25 @@ sub parse_command_line_arguments
 			print "Stopping service " . SERVICE_NAME . "\n";
 			exec('/sbin/service ' . SERVICE_NAME . ' stop');
 		} elsif ( /^(-u|--uncripple)$/ ) {
-			return 1;
+			# Process uncrippling in the main routine if user is root
+			if (geteuid() == 0) {
+				return 1;
+			} else {
+				$Skip_Cleanup = 1;
+				send_command_using_netcat('undo-crippling');
+				exit $?; 
+			}
 		} elsif ( /^(-w|--watch)$/ ) {
 			$Skip_Cleanup = 1;
 			exec('/bin/bash ' . PATH . 'vpn-monitor/watch_monitor.sh');
 		}
 	}
-	return 0;
+
+	# show usage and if no arguments selected
+	$Skip_Cleanup = 1;
+	print STDERR "Error: Unknown option\n";
+	print_usage_message();
+	exit 2;
 }
 
 
@@ -536,7 +560,7 @@ sub send_command_using_netcat
 	my $command = shift;
 	
 	unless ( -e PID_FILE ) {
-		print "vpn_monitor.pl is not running\nCommand ignored\n";
+		print "vpn-monitor is not running\nCommand ignored\n";
 		exit 100;
 	}
 
@@ -567,6 +591,17 @@ sub send_uncripple_using_netcat
 		print "Uncrippling command failed\n";
 	}
 	return 1;
+}
+
+
+sub exit_if_not_root
+{
+	my $euid = geteuid();
+	if ($euid != 0) {
+		$Skip_Cleanup = 1;
+		print STDERR "This program must be started and stopped as root.\n";
+		exit(128);
+	}
 }
 
 
@@ -1047,7 +1082,7 @@ sub check_crippled
 	}
 	
 	# if not crippled, change task to idle or temporary
-	if ( $Current_Task eq "crippled" || $Current_Task eq "uncripling" ) { 
+	if ( $Current_Task eq "crippled" || $Current_Task eq "uncrippling" ) { 
 		set_current_task_to_idle();
 	}
 
@@ -1176,6 +1211,7 @@ sub detect_change
 sub run_once
 {
 	my $uncripple_option = parse_command_line_arguments();
+	exit_if_not_root();
 
 	$ctx = new AnyEvent::Log::Ctx;
 	$ctx->log_to_file(LOG_FILE);
