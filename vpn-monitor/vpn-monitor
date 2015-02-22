@@ -609,7 +609,14 @@ sub get_lock
 {
 	my $uncripple_option = shift;
 
-	eval { make_path( dirname(LOCK_FILE) ); };
+	my $tmpfs_path = dirname(LOCK_FILE);
+	unless ( -d $tmpfs_path ) {
+		eval { make_path($tmpfs_path); };
+	}
+	# make sure directory is world readable, otherwise 'send_command_using_netcat'-subroutine 
+	# fails to detect the running instance for non-root users
+	eval { chmod(0755, $tmpfs_path); };
+
 	unless (open $Lockfile_Handle, ">>", LOCK_FILE) {
 		$Skip_Cleanup = 1;
 		if ($uncripple_option) {

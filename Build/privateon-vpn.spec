@@ -77,7 +77,7 @@ echo "%{perl_archlib}/CORE" | sed 's/i586/x86_64/g' >> /etc/ld.so.conf.d/Private
 echo "%{perl_archlib}/CORE" | sed 's/x86_64/i586/g' >> /etc/ld.so.conf.d/PrivateOn.conf
 /sbin/ldconfig
 mkdir -p /etc/PrivateOn
-mkdir -p /var/run/PrivateOn
+mkdir -p --mode=755 /var/run/PrivateOn
 cd /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/
 for i in $(seq 400 415) ; do
     [ ! -L  err${i}.html ] && ln -s ../index.html err${i}.html
@@ -135,8 +135,10 @@ exit 0
 /usr/share/applications/VPN.desktop
 %_unitdir/vpnmonitor.service
 %_mandir/man8/vpn_*.gz
+%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/vpn-gui
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/*.sh
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/*.pl
+%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/*.sh
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/*.pl
 /opt/PrivateOn-VPN
