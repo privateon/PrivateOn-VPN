@@ -19,7 +19,7 @@
 #
 # Location of the daemon
 #
-DAEMON=/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
+DAEMON=/opt/PrivateOn-VPN/vpn-monitor/vpn-monitor
 prog=`basename $DAEMON`
 PID_DIR=/var/run/PrivateOn
 PID_FILE=$PID_DIR/vpn-monitor.pid
@@ -47,7 +47,7 @@ case "$1" in
 		fi
 
 		echo -n "Starting $prog daemon"
-		startproc -p $PID_FILE $DAEMON
+		startproc -p $PID_FILE $DAEMON -f
 		rc_status -v
 		;;
 	stop)

@@ -12,7 +12,7 @@ Requires=network.service
 
 [Service]
 Type=forking
-ExecStart=/sbin/startproc -p /var/run/PrivateOn/vpn-monitor.pid /opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
+ExecStart=/sbin/startproc -p /var/run/PrivateOn/vpn-monitor.pid /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor -f
 StandardOutput=journal
 StandardError=journal
 Environment=

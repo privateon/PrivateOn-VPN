@@ -32,7 +32,7 @@ use constant {
 	API_CHECK_TIMEOUT => 5, # timeout to wait for API reply (check url)
 
 	MONITOR_SERVICE_NAME => 'vpnmonitor',
-	MONITOR_DAEMON => '/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl',
+	MONITOR_DAEMON => '/opt/PrivateOn-VPN/vpn-monitor/vpn-monitor',
 	MONITOR_DEFAULT => '/etc/PrivateOn/vpn-default.ini',
 
 	MONIT_SERVICE_NAME => 'monit',
@@ -197,7 +197,7 @@ sub monitor_is_running
 	my $regex = qr/$regex_line/;
 	my $monitor_pid = find_pid($regex);
 	if ($monitor_pid) {
-		debug(2, 'Found vpn_monitor process: pid %d.', $monitor_pid);
+		debug(2, 'Found vpn-monitor process: pid %d.', $monitor_pid);
 		return $monitor_pid;
 	}
 	return 0;

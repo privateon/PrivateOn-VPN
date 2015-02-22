@@ -94,8 +94,8 @@ cp -p VPN.desktop /home/--USER--/Desktop/
 
 
 ### Step 9. 	Test vpn-monitor installation
-## Run monitor from command as root:
-/opt/PrivateOn-VPN/vpn-monitor/vpn_monitor.pl
+## Start monitor in foreground mode as root:
+/opt/PrivateOn-VPN/vpn-monitor/vpn-monitor -f
 
 ## Optional step, check monitor log file for errors
 cat /var/log/PrivateOn.log
