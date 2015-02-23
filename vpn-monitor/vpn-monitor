@@ -47,6 +47,8 @@ use AnyEvent::Fork::RPC;
 use AnyEvent::HTTP;
 use POE;
 
+use Data::Dumper;
+
 use constant {
 	PATH          => '/opt/PrivateOn-VPN/',
 	STATUS_FILE   => '/var/run/PrivateOn/.status',
@@ -118,6 +120,8 @@ sub http_req_async
 			$Current_Status = NET_UNKNOWN;
 			$ctx->log(error => "http_req_async returned empty value, Current_Status = NET_UNKNOWN");
 			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "Current_Task = " . $Current_Task) if DEBUG > 0;
+			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef');
+			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef');
 			$Current_Update_Time = time();
 			return;
 		}
