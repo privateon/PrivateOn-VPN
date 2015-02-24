@@ -335,7 +335,7 @@ sub showNetStatus {
 		$status_text .= "The VPN is up\n";
 		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_UNCONFIRMED) {
-		$status_text = "The VPN is unconfirmed\n";
+		$status_text .= "The VPN is unconfirmed\n";
 		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text .= "The VPN is down\n";
@@ -363,6 +363,13 @@ sub showNetStatus {
 	} else {
 		$status_text .= "The monitor state is unknown\n";
 		print "ERROR: Could not parse monitor state. getMonitorState returned \"$current_state_string\" \n" if DEBUG > 0;
+	}
+
+	# instruct user if ini file missing
+	unless (-e INI_FILE) {
+		$status_text .= "No previous configuration file found.\n";
+		$status_text .= "Please click 'Servers' to create one.\n"; 
+		setStatusText($status_text);
 	}
 
 	print "$status_text.\n" if DEBUG > 0;
