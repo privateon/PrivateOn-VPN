@@ -18,7 +18,7 @@ use AnyEvent::Log;
 
 use constant {
 	LOG_FILE      => "/var/log/PrivateOn.log",
-	INI_FILE      => "/opt/PrivateOn-VPN/vpn-default.ini",
+	INI_FILE      => "/etc/PrivateOn/vpn-default.ini",
 	VERSION       => "0.9",
 	DEBUG         => 2
 };
@@ -90,13 +90,15 @@ sub activate_vpn
 	my $ctx = shift;
 	$ctx->log(debug => "Activating VPN connection (vpn_retry child)") if DEBUG > 0;
 
+	# use hardcoded default if vpn-default.ini missing, unreadable or doesn't contain 'id'-key
+	my $hardcoded_default_id = 'vpn-de1-nordvpn-udp';
+
 	my $id = "";
 	my $vpn_ini;
 	unless (open $vpn_ini, INI_FILE) {
 		$ctx->log(error => "Could not open '" . INI_FILE . "'  Reason: " . $! ." (vpn_retry child)");
 		$ctx->log(error => "Activating failure-mode VPN (vpn_retry child)");
-		# use hardcoded default if vpn-default.ini missing or can not be read
-		return system("/usr/bin/nmcli conn up id vpn-de1-nordvpn-udp >/dev/null 2&1");
+		return system("/usr/bin/nmcli conn up id " . $hardcoded_default_id . " >/dev/null 2&1");
 	}
 	while (my $line = <$vpn_ini>) {
 		if ($line =~/^id=(\S+)/) {
@@ -105,6 +107,7 @@ sub activate_vpn
 		}
 	}
 	close $vpn_ini;
+	if ($id eq '') { $id = $hardcoded_default_id; };
 	return system("/usr/bin/nmcli conn up id $id >/dev/null 2&1");
 }
 

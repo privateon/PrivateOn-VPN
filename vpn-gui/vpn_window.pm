@@ -29,7 +29,7 @@ use QtCore4::slots
 	turnOffVpnResume => [],
 	fixConnectionResume => [],
 	updateStatus => [];
-use File::Basename;
+use File::Basename qw(dirname);
 use File::Copy qw(copy);
 use File::Path qw(make_path);
 use IO::Interface::Simple;
@@ -44,7 +44,7 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState take
 
 use constant {
 	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
-	INI_FILE        => "/opt/PrivateOn-VPN/vpn-default.ini",
+	INI_FILE        => "/etc/PrivateOn/vpn-default.ini",
 	DEBUG           => 2,
 	ENABLE_VPN      => 1,
 	ENABLE_DUAL_VPN => 1,
@@ -142,7 +142,7 @@ sub NEW {
 	}
 
 	# set default values to be used if values not found in ini file 
-	my $default_protocol = "tcp";
+	my $default_protocol = "udp";
 	if (-e INI_FILE) {
 		open my $vpn_ini, "<", INI_FILE;
 		while (my $line = <$vpn_ini>) {
@@ -851,12 +851,13 @@ sub updateDefaultVpnResume {
 
 sub setDefaultVpn {
 	my ($configfile, $ccode, $comment, $type, $vpntype) = @_;
-	my $uuid = "";
-	my $url = "none";
-	my $remote = "";
+	my $uuid = '';
+	my $url = 'none';
+	my $remote = '';
 	my $return_code = 0;
 	my $pty = this->{pty};
 	my $spawn_out;
+	my $status_text;
 
 	print STDERR "Setting default vpn: \$configfile = '$configfile', \$ccode = '$ccode', \$type = '$type', \$vpntype = '$vpntype'\n" if DEBUG > 0;
 
@@ -900,14 +901,33 @@ sub setDefaultVpn {
 
 	# read API check URL from ini file
 	my $vpn_ini;
-	open $vpn_ini, "<", INI_FILE;
-	while (my $line = <$vpn_ini>) {
-		if ($line =~ /^url\s*=\s*(.*)\s*/) {
-			$url = $1;
-			last;
+	if (open $vpn_ini, "<" . INI_FILE) {
+		open $vpn_ini, "<", INI_FILE;
+		while (my $line = <$vpn_ini>) {
+			if ($line =~ /^url\s*=\s*(.*)\s*/) {
+				$url = $1;
+				last;
+			}
+		}
+		close $vpn_ini;
+	} else {
+		my $error = $!;
+		if ( -e INI_FILE ) {
+			print STDERR "Could not open " . INI_FILE . " for reading.  Reason: " . $error . "\n";
+			print STDERR "Deleting old ini file.\n";
+			unlink(INI_FILE);
+			$status_text = "Deleted old ini file.\n";
+		}
+		print STDERR "Creating new ini file " . INI_FILE . "\n";
+		$status_text = "Creating new ini file '" . INI_FILE . "'\n";
+		setStatusText($status_text);
+		
+		# make directory in case it is missing
+		my $config_path = dirname(INI_FILE);
+		unless ( -d $config_path ) {
+			eval { make_path($config_path); };
 		}
 	}
-	close $vpn_ini;
 
 	# write ini file
 	unless (open $vpn_ini, ">", INI_FILE) {
@@ -924,24 +944,27 @@ sub setDefaultVpn {
 	close $vpn_ini;
 
 	### setup dispatcher file
-	my $vpn_d;
-	unless (open $vpn_d, ">", DISPATCH_FILE) {
-		my $status_text = "Could not create '" . DISPATCH_FILE . "'  Reason: " . $! . "\n";
-		setStatusText($status_text);
-		return(1);
+	if ($uuid ne '') {
+		my $vpn_d;
+		unless (open $vpn_d, ">", DISPATCH_FILE) {
+			my $status_text = "Could not create '" . DISPATCH_FILE . "'  Reason: " . $! . "\n";
+			setStatusText($status_text);
+			return(1);
+		}
+		print $vpn_d "#!/bin/sh\n";
+		print $vpn_d "#$ccode-$type\n";
+		print $vpn_d "ESSID=\"$uuid\"\n";
+		print $vpn_d "\n";
+		print $vpn_d "interface=\$1 status=\$2\n";
+		print $vpn_d "case \$status in\n";
+		print $vpn_d "  up|vpn-down)\n";
+		print $vpn_d "	sleep 3 && /usr/bin/nmcli con up uuid \"\$ESSID\" &\n";
+		print $vpn_d "	;;\n";
+		print $vpn_d "esac\n";
+		close $vpn_d;
+		system("/usr/bin/chmod 755 ".DISPATCH_FILE);
 	}
-	print $vpn_d "#!/bin/sh\n";
-	print $vpn_d "#$ccode-$type\n";
-	print $vpn_d "ESSID=\"$uuid\"\n";
-	print $vpn_d "\n";
-	print $vpn_d "interface=\$1 status=\$2\n";
-	print $vpn_d "case \$status in\n";
-	print $vpn_d "  up|vpn-down)\n";
-	print $vpn_d "	sleep 3 && /usr/bin/nmcli con up uuid \"\$ESSID\" &\n";
-	print $vpn_d "	;;\n";
-	print $vpn_d "esac\n";
-	close $vpn_d;
-	system("/usr/bin/chmod 755 ".DISPATCH_FILE);
+
 	return 0;
 }
 
