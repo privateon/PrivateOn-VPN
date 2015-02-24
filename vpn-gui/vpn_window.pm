@@ -1235,13 +1235,16 @@ sub updateStatus {
 	} else {
 		if ( $current_time - $last_pty_read > 2*60 ) { # keep text for 2 min
 			my $current_status = getApiStatus();
-			showNetStatus($current_status);
-			if ($current_status == NET_PROTECTED) {
-				this->{internalTimer}->start(60*1000);
-			} else {
-				this->{internalTimer}->start(60*1000);
+			if ($current_status != NET_UNCONFIRMED) {
+				$unconfirmed_counter = 0;
+				showNetStatus($current_status);
+				if ($current_status == NET_PROTECTED) {
+					this->{internalTimer}->start(60*1000);
+				} else {
+					this->{internalTimer}->start(60*1000);
+				}
+				return;
 			}
-			return;
 		} elsif ( $current_time - $last_pty_read > 30 ) { # slow down refresh after 30 seconds
 			this->{internalTimer}->start(5*1000);
 		} elsif ( $current_time - $last_pty_read > 60 ) { # slow down refresh even more after 1 minute
