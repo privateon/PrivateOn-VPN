@@ -1246,6 +1246,9 @@ sub run_once
 		pf_set( PID_FILE );
 	}
 
+	# read API check URL from inifile to global variable
+	read_api_url_from_ini_file();
+
 	if ( !-e STATUS_FILE) {
 		unless ( -e INI_FILE ) {
 			$Monitor_Enabled = 0;
@@ -1308,14 +1311,17 @@ sub run_once
 		}
 	}
 
+	# write uuid from ini file to dispatcher file, if uuid is missing don't enable monitoring
+	if ( write_dispatcher() == 1 ) {
+		$Monitor_Enabled = 0;
+		$ctx->log(info => "Active monitoring disabled because ini file missing 'uuid'-key.");
+		change_active_monitoring(0);
+		if ($uncripple_option) { spawn_undo_crippling(); };
+		return 1;
+	}
+
 	$Monitor_Enabled = 1;
 	$ctx->log(info => "Active monitoring enabled.");
-
-	# write uuid from INI file to dispatcher file
-	write_dispatcher();
-
-	# read API check URL from inifile to global variable
-	read_api_url_from_ini_file();
 
 	# Start periodic network status checking
 	$Detect_Change_Timer = AnyEvent->timer(
