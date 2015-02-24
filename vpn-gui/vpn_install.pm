@@ -11,6 +11,8 @@ package vpn_install;
 
 use strict;
 use warnings;
+use File::Basename qw(dirname);
+use File::Path qw(make_path);
 use Getopt::Long;
 
 sub import{
@@ -22,7 +24,7 @@ sub import{
 
 use constant {
         CONFIG_URL   => "http://www.tietosuojakone.fi/openvpn/serverlist-current.zip",
-	INI_FILE     => "/opt/PrivateOn-VPN/vpn-default.ini",
+	INI_FILE     => "/etc/PrivateOn/vpn-default.ini",
 	URL_FILE     => "Check-VPN-status-API.url",
 	TMP_PATH     => "/tmp/vpn_install/",
 	CUSTOMIZE    => 0,
@@ -173,7 +175,7 @@ sub addOneConnection
 ### helper functions
 sub writeUrlToIniFile
 {
-	my $url = "";
+	my $url = 'none';
 	if (-e TMP_PATH . URL_FILE) {
 		print STDERR "Url file " . TMP_PATH . URL_FILE . " found\n" if DEBUG > 0;
 		if (open(my $fh, '<:encoding(UTF-8)', TMP_PATH . URL_FILE)) {
@@ -181,28 +183,40 @@ sub writeUrlToIniFile
 			chomp $url;
 		} else {
 			print STDERR "Could not open file " . TMP_PATH . URL_FILE . " Reason: " . $! . "\n";
-			return 1;
+			print STDERR "Updating url='none' to INI file.\n\n" if DEBUG > 0;
 		}
 	} else {
 		print STDERR "Url file " . TMP_PATH . URL_FILE . " not found\n" if DEBUG > 0;
-		print STDERR "Skipping INI file update.\n\n" if DEBUG > 0;
-		return 1;
+		print STDERR "Updating url='none' to INI file.\n\n" if DEBUG > 0;
 	}
 
-	# continue to read ini file if we got this far
+	# read ini file if it exists
 	my $vpn_ini;
-	unless (open $vpn_ini, "<" . INI_FILE) {
-		print STDERR "Unable to open " . INI_FILE . " for reading. Reason: " . $! . "\n";
-		return 1;
+	my @vpn_ini_lines;
+	if (open $vpn_ini, "<" . INI_FILE) {
+		my @vpn_ini_lines = <$vpn_ini>;
+		close $vpn_ini;
+	} else {
+		my $error = $!;
+		if ( -e INI_FILE ) {
+			print STDERR "Could not open " . INI_FILE . " for reading.  Reason: " . $error . "\n";
+			print STDERR "Deleting old ini file.\n";
+			unlink(INI_FILE);
+		} else {
+			print STDERR "Creating new ini file " . INI_FILE . "\n";
+		}
+		# make directory in case it is missing
+		my $config_path = dirname(INI_FILE);
+		unless ( -d $config_path ) {
+			eval { make_path($config_path); };
+		}
 	}
-	my @vpn_ini_lines = <$vpn_ini>;
-	close $vpn_ini;
 
 	# update ini
 	unless (open VPN_INI, ">" . INI_FILE) {
 		print STDERR "Unable to open " . INI_FILE . " for writing. Reason: " . $! . "\n";
 		return 1;
-	}	
+	}
 	my $has_been_written = 0;
 	foreach my $line (@vpn_ini_lines) {
 		if ($line =~ /url/) {
