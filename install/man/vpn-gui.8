@@ -1,0 +1,36 @@
+.\" Manpage for vpn-gui
+.\"
+.\" Copyright (C) 2014-2015 PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+.\" All rights reserved. Use is subject to license terms.
+.TH man 8 "01 Apr 2015" "0.9" "vpn-gui man page"
+.SH NAME
+vpn-gui \- PrivateOn VPN Manager
+.SH SYNOPSIS
+.B vpn-gui
+[option]
+.sp
+.B vpn-gui \-\-show
+.SH DESCRIPTION
+Vpn-gui is the front-end for the vpn-monitor daemon.
+.br
+This application is used to change the selected VPN server.
+.br
+When you want to turn off the VPN, it must be done using the application,
+.br
+otherwise the backend and dispatcher script will reconnect the VPN.
+.SH OPTIONS
+.PP
+.IP "\fB\-h\fR, \fB\-\-help\fR"
+Display usage message and exit.
+.IP "\fB\-s\fR, \fB\-\-show\fR"
+Start with widget window visible
+.SH SEE ALSO
+vpn-monitor(8)
+.SH AUTHOR
+Mikko Rautiainen (info@tietosuojakone.fi)
+.SH AVAILABILITY
+The vpn-monitor command is part of the PrivateOn VPN Manager package
+.br 
+and is available from Tietosuojakone Oy's Repository
+.br 
+.I \fIhttps://software.opensuse.org/package/PrivateOn-VPN\fR 
