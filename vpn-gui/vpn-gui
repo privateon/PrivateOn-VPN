@@ -9,7 +9,7 @@
 #
 
 #
-#		/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+#		/opt/PrivateOn-VPN/vpn-gui/vpn-gui
 #
 #   Vpn-gui is the front-end for the vpn-monitor daemon.
 #   This application is used to change the selected VPN server.
@@ -33,7 +33,7 @@ use vpn_tray;
 # Preflight check: is this program being run with root privileges
 if ($<) {
 	die "\nError:\tThis program must be run with root privileges.\n" .
-	    "\tStart program by running \'/opt/PrivateOn-VPN/vpn-gui/gui.sh\' as a non-root user.\n\n";
+	    "\tStart program by running \'/opt/PrivateOn-VPN/vpn-gui/launch-vpn-gui\' as a non-root user.\n\n";
 }
 
 
@@ -41,7 +41,7 @@ if ($<) {
 my $show_option = 0;
 foreach (@ARGV) {
 	if ( /^(-\?|-h|--help)$/ ) {
-		print STDERR "Usage: vpn_gui.pl [OPTION]\n" .
+		print STDERR "Usage: vpn-gui [OPTION]\n" .
 		   "  -s or --show       Show widget on startup\n" .
 		   "  -h or --help       Print this message and exit\n";
 		exit 0;

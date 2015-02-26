@@ -2,5 +2,5 @@
 Defaults env_keep += "DISPLAY XAUTHORITY"
 Cmnd_Alias PRIVATEON = /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor, \
 	/opt/PrivateOn-VPN/vpn-monitor/check_monitor.pl, \
-	/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl, /opt/PrivateOn-VPN/vpn-gui/kill_gui.sh
+	/opt/PrivateOn-VPN/vpn-gui/vpn-gui, /opt/PrivateOn-VPN/vpn-gui/kill_gui.sh
 ALL ALL=NOPASSWD: PRIVATEON

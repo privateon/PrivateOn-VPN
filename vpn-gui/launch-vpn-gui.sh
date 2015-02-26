@@ -15,7 +15,7 @@
 
 
 CHECK=/opt/PrivateOn-VPN/vpn-monitor/check_monitor.pl
-DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+DAEMON=/opt/PrivateOn-VPN/vpn-gui/vpn-gui
 
 # XAUTHORITY variable is not set if user is already root
 if test "$(id -u)" -ne 0; then

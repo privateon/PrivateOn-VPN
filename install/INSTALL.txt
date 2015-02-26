@@ -107,7 +107,7 @@ rcvpnmonitor start
 
 ### Step 10. 	Test vpn-gui installation
 ## Run GUI from command line as root:
-/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+/opt/PrivateOn-VPN/vpn-gui/vpn-gui
 
 ## If you see an error message "Can't load '--SOME-PATH--/QtCore4.so' for module QtCore4: libperl.so"
 updatedb
@@ -119,7 +119,7 @@ ln -s --RESULT-- /usr/lib64/
 ln -s --RESULT-- /usr/lib/
 
 ## Run GUI from command line again:
-/opt/PrivateOn-VPN/vpn-gui/vpn_gui.pl
+/opt/PrivateOn-VPN/vpn-gui/vpn-gui
 
 ## If you see an error message "SvREFCNT_inc is not exported by the Devel::Peek module
 ##  Can't continue after import errors at /usr/lib/perl5/vendor_perl/5.20.1/x86_64-linux-thread-multi/QtGui4.pm line 25."
