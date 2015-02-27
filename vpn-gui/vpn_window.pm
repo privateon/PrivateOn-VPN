@@ -45,7 +45,7 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState take
 use constant {
 	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
 	INI_FILE        => "/etc/PrivateOn/vpn-default.ini",
-	DEBUG           => 2,
+	DEBUG           => 3,
 	ENABLE_VPN      => 1,
 	ENABLE_DUAL_VPN => 1,
 	ENABLE_TOR_VPN  => 0
@@ -75,11 +75,11 @@ sub NEW {
 	this->{id_serverType} = 0;
 	this->{vpnType} = 'vpn';
 	this->{protocol} = 'tcp';
+	this->{updateStatusMode} = 'normal';
 
 	# update status text timer
 	this->{internalTimer} = Qt::Timer(this);  # create internal timer
 	this->connect(this->{internalTimer}, SIGNAL('timeout()'), SLOT('updateStatus()'));
-	this->{internalTimer}->start(20*1000);	  # emit signal every 20 seconds
 
 	# button enable/disable timer
 	this->{buttonTimer} = Qt::Timer(this);
@@ -134,11 +134,19 @@ sub NEW {
 	$status->setMaximumHeight(75);
 	this->{statusOutput} = $status;
 
-	# show VPN/network/monitor status and retrieve api_status
+	# retrieve api_status
 	my $api_status = getApiStatus();
-	showNetStatus($api_status);
-	if ($api_status == NET_UNCONFIRMED) {
+
+	# show VPN/network/monitor status and set timer accordingly
+	unless ( showNetStatus($api_status) ) {
+		# monitor offline or other failure, switch to other mode
+		this->{updateStatusMode} = 'other';
+		this->{lastPtyRead} = time();
 		this->{internalTimer}->start(1000);
+	} elsif ($api_status == NET_UNCONFIRMED) {
+		this->{internalTimer}->start(1000);
+	} else {
+		this->{internalTimer}->start(20*1000);
 	}
 
 	# set default values to be used if values not found in ini file 
@@ -305,6 +313,16 @@ sub isVpnActive {
 }
 
 
+sub startTask {
+	takeABreak();
+	removeDispatcher();
+
+	# change mode so that pty writes are displayed
+	this->{updateStatusMode} = 'other';
+	this->{lastPtyRead} = time();
+}
+
+
 sub setStatusText {
 	my ($status_text) = @_;
 
@@ -322,6 +340,7 @@ sub setStatusText {
 sub showNetStatus {
 	my ($api_status) = @_;
 	my $status_text;
+	my $monitor_online = 0;
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) {
 		$status_text = "The network is online\n";
@@ -349,13 +368,15 @@ sub showNetStatus {
 	if ($current_state_string =~ /(\S+)-(\S+)-\S+/) {
 		my $monitor = $1;
 		my $task = $2;
-		if ( $task eq "unknown") {
+		if ( $task eq "unknown" ) {
 			$status_text .= "The monitor state is unknown\n";
 			print "ERROR: getMonitorState returned unknown \"$current_state_string\" \n" if DEBUG > 0;
 		} elsif ( $monitor eq "Enabled" ) {
 			$status_text .= "The monitor is enabled\n";
+			$monitor_online = 1;
 		} elsif ( $monitor eq "Disabled" ) {
 			$status_text .= "The monitor is disabled\n";
+			$monitor_online = 1;
 		} else {
 			$status_text .= "The monitor state is unknown\n";
 			print "ERROR: Could not parse monitor state. getMonitorState returned \"$current_state_string\" \n" if DEBUG > 0;
@@ -372,13 +393,10 @@ sub showNetStatus {
 		setStatusText($status_text);
 	}
 
-	print "$status_text.\n" if DEBUG > 0;
+	print "\n$status_text\n" if DEBUG > 2;
 	setStatusText($status_text);
 
-	# update button text and enabled/disabled
-	setButtons($current_state_string);
-
-	return($api_status);
+	return($monitor_online);
 }
 
 
@@ -436,6 +454,46 @@ sub setButtons {
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
 	}
+}
+
+
+sub updateButtons {
+	# initialize persistent variables
+	state $last_state_read = 0; 		# epoch year 1970
+	state $previous_state_string = "";	
+
+	my $monitor_state = 0;			# 0 means no data, 1 = OK, 2 = offline
+	my $current_state_string;
+
+	# only update button text and enabled/disabled if 10 seconds has passed from last iteration
+	my $current_time = time();
+	if ($current_time - $last_state_read >= 10) {
+		$last_state_read = $current_time;
+
+		my $current_state_string = getMonitorState();
+		if ($current_state_string ne $previous_state_string) {
+			setButtons($current_state_string);
+			$previous_state_string = $current_state_string;
+		}
+
+		if ($current_state_string =~ /(\S+)-(\S+)-\S+/) {
+			my $monitor = $1;
+			my $task = $2;
+			if ( $task eq "unknown" ) {
+				$monitor_state = 2;
+			} elsif ( $monitor eq "Enabled" ) {
+				$monitor_state = 1;
+			} elsif ( $monitor eq "Disabled" ) {
+				$monitor_state = 1;
+			} else {
+				$monitor_state = 2;
+			}
+		} else {
+			$monitor_state = 2;
+		}
+	}
+
+	return($monitor_state);
 }
 
 
@@ -689,8 +747,7 @@ sub updateDefaultVpn {
 	this->{refreshButton}->setEnabled(0);
 	this->{buttonTimer}->start(20000);
 
-	takeABreak();
-	removeDispatcher();
+	startTask();
 
 	my $status_text;
 
@@ -1016,8 +1073,7 @@ sub turnOffVpn {
 	my $status_text = "The VPN connection is deactivating,\n";
 	$status_text .= "Please hold on.\n";
 
-	takeABreak();
-	removeDispatcher();
+	startTask();
 	disableMonitor();
 
 	if (getCripplingStatus(DEBUG)) {
@@ -1134,6 +1190,8 @@ sub turnOffVpnResume {
 sub fixConnection {
 	my $status_text = "Fixing network connection\n";
 
+	startTask();
+
 	# restart NetworkManager if not running
 	if ( system("/usr/sbin/service NetworkManager status >/dev/null 2>&1") ) {
 		system("/usr/sbin/service NetworkManager stop >/dev/null 2>&1");
@@ -1237,62 +1295,171 @@ sub fixConnectionResume {
 
 ################                Main Loop               ################
 sub updateStatus {
+	if ( this->{updateStatusMode} eq 'normal' ) {
+		updateStatusNormal();
+	} else {
+		updateStatusOther();
+	}
+}
+
+
+sub updateStatusNormal {
+	# initialize persistent variables
+	state $unconfirmed_counter = 0;
+
+	print "@" if DEBUG > 2;
+
+	my $api_status = getApiStatus();
+	if ($api_status == NET_UNCONFIRMED) {
+		$unconfirmed_counter++;
+		if ($unconfirmed_counter == 1) {
+			# continue subroutine to change status text to unconfirmed 
+			this->{internalTimer}->start(1000);
+		} elsif ($unconfirmed_counter < API_CHECK_TIMEOUT) {
+			# ignore status change until request has timed out
+			this->{internalTimer}->start(1000);
+			return;
+		} else {
+			# request had timed out, slow down timer and continue
+			this->{internalTimer}->start(10*1000);
+		}
+	} else {
+		$unconfirmed_counter = 0;
+	}
+
+	# display net/monitor status
+	unless ( showNetStatus($api_status) ) {
+		# monitor offline or other failure, switch to other mode
+		this->{updateStatusMode} = 'other';
+		this->{lastPtyRead} = time();
+		this->{internalTimer}->start(1000);
+		return;
+	}
+
+	updateButtons();
+
+	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
+		this->{internalTimer}->start(60*1000);
+	} elsif ($api_status == NET_UNCONFIRMED) {
+		return;
+	} elsif ($api_status == NET_CRIPPLED) { 
+		this->{updateStatusMode} = 'other';
+		this->{lastPtyRead} = time();
+		this->{internalTimer}->start(10*1000);
+	} else {
+		this->{updateStatusMode} = 'other';
+		this->{lastPtyRead} = time();
+		this->{internalTimer}->start(1000);
+	}
+}
+
+
+sub updateStatusOther {
+	# initialize persistent variables
+	state $previous_status = 100;
+	state $reset_previous_status = 1;
+	state $previous_monitor_state = 0;
+	state $unconfirmed_counter = 0;
+
+	my $current_time = time();
 	my $status = this->{statusOutput};
 	my $status_text = $status->toPlainText();
 	my $status_text_changed = 0;
+
+	# read pty
 	my $pty = this->{pty};
 	my $active_flag = $pty->is_active();
-	my $current_status;
-
-	# initialize persistent variables
-	state $previous_status = 100;
-	state $previous_state_string = "";
-	state $last_pty_read = 0; 		# epoch year 1970
-	state $last_state_read = 0; 		# epoch year 1970
-	state $unconfirmed_counter = 0;
-
 	while ( my $output = $pty->read(0) ) {
 		$status_text .= $output;
 		$status_text_changed = 1;
 		$active_flag = 1;
+		this->{lastPtyRead} = $current_time;
 	}
 
-	my $current_time = time();
-	if ($active_flag) {
-		this->{internalTimer}->start(1000);
-		$last_pty_read = $current_time;
-		print "#" if DEBUG > 1;
-	} else {
-		if ( $current_time - $last_pty_read > 2*60 ) { # keep text for 2 min
-			my $current_status = getApiStatus();
-			if ($current_status != NET_UNCONFIRMED) {
-				$unconfirmed_counter = 0;
-				showNetStatus($current_status);
-				if ($current_status == NET_PROTECTED) {
-					this->{internalTimer}->start(60*1000);
-				} else {
-					this->{internalTimer}->start(60*1000);
-				}
-				return;
-			}
-		} elsif ( $current_time - $last_pty_read > 30 ) { # slow down refresh after 30 seconds
-			this->{internalTimer}->start(5*1000);
-		} elsif ( $current_time - $last_pty_read > 60 ) { # slow down refresh even more after 1 minute
-			this->{internalTimer}->start(10*1000);
+	if (DEBUG > 2) {
+		if ($active_flag) {
+			print "#";
+		} else {
+			print ".";
 		}
-		print "." if DEBUG > 1;
 	}
 
-	if (not defined $current_status) {
-		$current_status = getNetStatus();
+	if ($active_flag) {
+		# display progress indicator dots
+		if ($status_text =~ /please\shold\son/i) {
+			# add progress indicator dots if last line of status text is 'Please hold on'
+			if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
+				unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {
+					chomp $status_text;
+				}
+				$status_text .= ".\n";
+				$status_text_changed = 1;
+			} else {
+			# since the task is completed, remove dots and lines before the dots
+				$status_text =~ s/.*[\r]?[\n]?.*please\shold\son[.]?[\r]?[\n]?[.]*[\r]?[\n]?//i;
+				$status_text_changed = 1;
+			}
+		}
+
+		if ($status_text_changed) {
+			setStatusText($status_text);
+		}
+
+		# reset network status on next iteration after the pty's subprocess has completed
+		$reset_previous_status = 1;
+
+		this->{internalTimer}->start(1000);
+		return;
 	}
+
+	# continue here if the pty is not active
+	my $last_pty_read = this->{lastPtyRead};
+	if ( $current_time - $last_pty_read > 2*60 ) { # keep text for 2 min
+		print "\n\tupdateStatusMode changed back to normal because of 2 minute timeout.\n" if DEBUG > 1;
+		this->{updateStatusMode} = 'normal';
+		updateStatusNormal();
+		return;
+	} elsif ( $current_time - $last_pty_read > 30 ) { # slow down refresh after 30 seconds
+		this->{internalTimer}->start(5*1000);
+	} elsif ( $current_time - $last_pty_read > 60 ) { # slow down refresh even more after 1 minute
+		this->{internalTimer}->start(10*1000);
+	}
+
+	# update buttons and retrieve monitor state (runs only every 10 sec)
+	my $current_monitor_state = updateButtons();
+	if ($current_monitor_state) {
+		unless ($previous_monitor_state) {
+			$previous_monitor_state = $current_monitor_state;
+		}
+		if ($current_monitor_state != $previous_monitor_state) {
+			if ($current_monitor_state == 1) {
+				print "\n\tupdateStatusMode changed back to normal because monitor recovered.\n" if DEBUG > 1;
+				this->{updateStatusMode} = 'normal';
+				updateStatusNormal();
+				return;
+			} elsif ($current_monitor_state == 2) {
+				$status_text .= "Monitor is offline, please wait.\n";
+			}
+			$previous_monitor_state = $current_monitor_state;
+		}
+	}
+
+	# store network status for next iteration
+	my $current_status = getNetStatus();
 	my $tmp_previous = $previous_status;
+	if ($reset_previous_status) {
+		$tmp_previous = $current_status;
+		$reset_previous_status = 0;
+		forceRefresh();
+	}
 	$previous_status = $current_status;
 
+	# clear unconfirmed counter before tampering with current_status variable
 	if ($current_status != NET_UNCONFIRMED) {
 		$unconfirmed_counter = 0;
 	}
 
+	# compare current_status to previous_status and inform the user about changes
 	if ($current_status != $tmp_previous) {
 		forceRefresh();
 
@@ -1316,7 +1483,7 @@ sub updateStatus {
 			$unconfirmed_counter++;
 			if ($unconfirmed_counter < API_CHECK_TIMEOUT) {
 				# ignore status change until request has timed out
-				$current_status = $tmp_previous; 
+				$current_status = $tmp_previous;
 				$previous_status = $tmp_previous;
 				this->{internalTimer}->start(1000);
 			} else {
@@ -1383,35 +1550,10 @@ sub updateStatus {
 		}
 	}
 
-	# progress indicator dots
-	if ($status_text =~ /please\shold\son/i) {
-		# add progress indicator dots if last line of status text is 'Please hold on'
-		if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
-			unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {
-				chomp $status_text;
-			}
-			$status_text .= ".\n";
-			$status_text_changed = 1;
-		} else {
-		# since the task is completed, remove dots and lines before the dots
-			$status_text =~ s/.*[\r]?[\n]?.*please\shold\son[.]?[\r]?[\n]?[.]*[\r]?[\n]?//i;
-			$status_text_changed = 1;
-		}
-	}
-
 	if ($status_text_changed) {
 		setStatusText($status_text);
 	}
-
-	# if network status has changed OR at least 10 seconds have passed, update button text and enabled/disabled
-	if ( ($current_status != $tmp_previous) || ($current_time - $last_state_read >= 10) ) {
-		my $current_state_string = getMonitorState();
-		if ($current_state_string ne $previous_state_string) {
-			setButtons($current_state_string);
-			$previous_state_string = $current_state_string;
-			$last_state_read = $current_time;
-		}
-	}
+	
 }
 
 1;
