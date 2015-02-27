@@ -1,7 +1,7 @@
 [Desktop Entry]
 Comment[en_US]=PrivateOn-VPN GUI
 Comment=PrivateOn-VPN GUI
-Exec=/opt/PrivateOn-VPN/vpn-gui/launch-vpn-gui
+Exec=/opt/PrivateOn-VPN/vpn-gui/launch-vpn-gui.sh
 GenericName[en_US]=VPN Manager
 GenericName=VPN Manager
 Icon=/opt/PrivateOn-VPN/vpn-gui/images/PrivateOn-icon.png

@@ -24,7 +24,7 @@ if test "$(id -u)" -ne 0; then
 	exit 1
 fi
 
-# Run kill on list because "sudo launch-vpn-gui" produces multiple processes
+# Run kill on list because "sudo launch-vpn-gui.sh" produces multiple processes
 for PID in $(pgrep -f $DAEMON); do
 	kill -9 $PID >/dev/null 2>&1
 done

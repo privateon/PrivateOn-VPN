@@ -33,7 +33,7 @@ use vpn_tray;
 # Preflight check: is this program being run with root privileges
 if ($<) {
 	die "\nError:\tThis program must be run with root privileges.\n" .
-	    "\tStart program by running \'/opt/PrivateOn-VPN/vpn-gui/launch-vpn-gui\' as a non-root user.\n\n";
+	    "\tStart program by running \'/opt/PrivateOn-VPN/vpn-gui/launch-vpn-gui.sh\' as a non-root user.\n\n";
 }
 
 
