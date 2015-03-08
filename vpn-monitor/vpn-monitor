@@ -45,6 +45,7 @@ use AnyEvent::Log;
 use AnyEvent::Fork;
 use AnyEvent::Fork::RPC;
 use AnyEvent::HTTP;
+use AnyEvent::CacheDNS ':register';
 use POE;
 
 use Data::Dumper;
@@ -151,23 +152,19 @@ sub http_req_async
 	return $Current_Status;
 }
 
-sub tun_interface_exists
+sub tun0_exists
 {
-	my $sys_virtual_path = "/sys/devices/virtual/net/";
-	my $net;
-	my $exists = 0;
-	unless (opendir $net, $sys_virtual_path) {
-		$ctx->log(error => "Could not open directory: " . $sys_virtual_path . " Reason: " . $!);
-		return undef;
-	}
-	while (my $file = readdir($net)) {
-		if ($file =~ /^tun[0-9]+/) {
-			$exists = 1;
-			last;
+	my $result = 0;
+	open(my $iph, "ip link list |") or do {
+		return $result;
+	};
+	while (<$iph>) {
+		if (/^\d+: (tun\d+):/) {
+			$result = $1;
 		}
 	}
-	closedir $net;
-	return $exists;
+	close $iph;
+	return $result;
 }
 
 sub get_api_status 
@@ -191,7 +188,7 @@ sub get_api_status
 	}
 	close ROUTE;
 
-	if (tun_interface_exists() && $Url_For_Api_Check ne 'none') {
+	if (tun0_exists() && $Url_For_Api_Check ne 'none') {
 		my $status = http_req_async($Url_For_Api_Check); # it will set $Current_Status
 		return $status;
 	}
@@ -218,11 +215,11 @@ sub quick_net_status
 	}
 	close ROUTE;
 
-	my $tun_interface_exists = tun_interface_exists();
-	unless (defined $tun_interface_exists) {
+	my $tun0_exists = tun0_exists();
+	unless (defined $tun0_exists) {
 		return NET_BROKEN;
 	}
-	if ($tun_interface_exists) {
+	if ($tun0_exists) {
 		if ($Current_Status == NET_UNCONFIRMED) {
 			return NET_UNCONFIRMED;
 		}
