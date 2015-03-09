@@ -119,10 +119,17 @@ sub http_req_async
 
 		if ( !defined($data) ) {
 			$Current_Status = NET_UNKNOWN;
-			$ctx->log(error => "http_req_async returned empty value, Current_Status = NET_UNKNOWN");
+			$ctx->log(error => "http_req_async request error, Current_Status = NET_UNKNOWN");
 			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "Current_Task = " . $Current_Task) if DEBUG > 0;
 			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef');
 			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef');
+			$Current_Update_Time = time();
+			return;
+		} elsif ( (length $data == 0) || ($headers->{"content-length"} == 0) ) {
+			$Current_Status = NET_UNKNOWN;
+			$ctx->log(error => "http_req_async returned empty content, Current_Status = NET_UNKNOWN");
+			$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 0;
+			$ctx->log(debug => "\tContent-length: " . (defined($headers->{'content-length'}) ? $headers->{'content-length'} : 'undef') . "\tType: " . ($headers->{'content-type'} || 'undef')) if DEBUG > 0;
 			$Current_Update_Time = time();
 			return;
 		}
