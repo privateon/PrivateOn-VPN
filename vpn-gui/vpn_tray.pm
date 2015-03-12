@@ -29,11 +29,9 @@ use File::Basename;
 
 # monitor state / net status
 use constant {
-	UNPROTECTED => 0,
-	PROTECTED   => 1,
-	OFFLINE     => 2,
-	BROKEN      => 2,
-	ERROR       => 2,	# OFFLINE, BROKEN and ERROR use same icon
+	UNPROTECTED => 0,	# UNPROTECTED and NEGATIVE use the same icon
+	PROTECTED   => 1,	# PROTECTED, CONFIRMING and UNCONFIRMED use the same icon
+	OFFLINE     => 2,	# OFFLINE, BROKEN and ERROR use the same icon
 	CRIPPLED    => 3,
 	REFRESH     => 4,
 	GUARD       => 5	# Increment GUARD to basic state, e.g. PROTECTED+GUARD
@@ -98,7 +96,7 @@ sub setVisible
 
 sub setIcon
 {
-	my $index = ERROR;
+	my $index = OFFLINE;
 
 	state $previous_state_string = "";
 	my $current_state_string = getMonitorState();
@@ -116,17 +114,17 @@ sub setIcon
 		my $network = $3;
 
 		if ( $task eq "unknown" || $network eq "UNKNOWN" || $network eq "ERROR" ) {
-			$index = ERROR;
+			$index = OFFLINE;
 		} elsif ( $task eq "retrying" || $task eq "temporary" ) {
 			$index = REFRESH;
-		} elsif ( $task eq "crippled" || $task eq "uncrippling" || $network eq "CRIPPLED") {
+		} elsif ( $task eq "crippled" || $task eq "uncrippling" || $network eq "CRIPPLED" ) {
 			$index = CRIPPLED;
-		} elsif ( $network eq "UNPROTECTED" ) {
+		} elsif ( $network eq "UNPROTECTED" || $network eq "NEGATIVE" ) {
 			$index = UNPROTECTED;
-		} elsif ( $network eq "PROTECTED" || $network eq "CONFIRMING" || $network eq "UNCONFIRMED") {
+		} elsif ( $network eq "PROTECTED" || $network eq "CONFIRMING" || $network eq "UNCONFIRMED" ) {
 			$index = PROTECTED;
 		} elsif ( $network eq "BROKEN" || $network eq "OFFLINE" ) {
-			$index = BROKEN;
+			$index = OFFLINE;
 		}
 
 		if ( $monitor eq "Enabled" ) {
@@ -140,7 +138,7 @@ sub setIcon
 	this->{trayIcon}->setToolTip(this->{iconComboBox}->itemText($index));
 
 # temporary debug code
-print "\tSystray - State change current_state = $current_state_string\tindex = $index\n";
+#print "\tSystray - State change current_state = $current_state_string\tindex = $index\n";
 
 	this->{timer}->start(10000);	# next setIcon in 10 seconds
 	$previous_state_string = $current_state_string;
@@ -185,7 +183,7 @@ sub createIconGroupBox
 	   Qt::Icon(dirname($0).'/images/tray-unprotected-ignore.png'), this->tr('Unprotected'));
 	this->{iconComboBox}->insertItem( PROTECTED , 
 	   Qt::Icon(dirname($0).'/images/tray-protected-ignore.png'), this->tr('Protected'));
-	this->{iconComboBox}->insertItem( BROKEN , 
+	this->{iconComboBox}->insertItem( OFFLINE , 
 	   Qt::Icon(dirname($0).'/images/tray-broken-ignore.png'), this->tr('Offline'));
 	this->{iconComboBox}->insertItem( CRIPPLED , 
 	   Qt::Icon(dirname($0).'/images/tray-crippled-guard.png'), this->tr('Safe-Mode'));
@@ -197,7 +195,7 @@ sub createIconGroupBox
 	   Qt::Icon(dirname($0).'/images/tray-unprotected-guard.png'), this->tr('Unprotected'));
 	this->{iconComboBox}->insertItem( PROTECTED+GUARD , 
 	   Qt::Icon(dirname($0).'/images/tray-protected-guard.png'), this->tr('Protected'));
-	this->{iconComboBox}->insertItem( BROKEN+GUARD , 
+	this->{iconComboBox}->insertItem( OFFLINE+GUARD , 
 	   Qt::Icon(dirname($0).'/images/tray-broken-guard.png'), this->tr('Offline'));
 	this->{iconComboBox}->insertItem( CRIPPLED+GUARD , 
 	   Qt::Icon(dirname($0).'/images/tray-crippled-guard.png'), this->tr('Safe-Mode'));

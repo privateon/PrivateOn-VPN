@@ -52,15 +52,16 @@ use constant {
 };
 
 use constant {
-	NET_UNPROTECTED	=> 0,
-	NET_PROTECTED	=> 1,
-	NET_CONFIRMING  => 2,
-	NET_UNCONFIRMED => 3,
-	NET_CRIPPLED	=> 4,
-	NET_OFFLINE     => 5,
-	NET_BROKEN	=> 6,
-	NET_ERROR	=> 7,
-	NET_UNKNOWN	=> 8
+	NET_UNPROTECTED	=> 1,
+	NET_PROTECTED	=> 2,
+	NET_NEGATIVE	=> 3,
+	NET_CONFIRMING	=> 4,
+	NET_UNCONFIRMED	=> 5,
+	NET_CRIPPLED	=> 6,
+	NET_OFFLINE     => 7,
+	NET_BROKEN	=> 8,
+	NET_ERROR	=> 9,
+	NET_UNKNOWN	=> 10
 };
 
 use constant {
@@ -343,7 +344,7 @@ sub showNetStatus {
 	my $status_text;
 	my $monitor_online = 0;
 
-	if ( $api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED ||
+	if ( $api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED || $api_status == NET_NEGATIVE ||
 	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED ) {
 		$status_text = "The network is online\n";
 	} elsif ($api_status == NET_CRIPPLED) {
@@ -354,19 +355,16 @@ sub showNetStatus {
 
 	if ($api_status == NET_PROTECTED) {
 		$status_text .= "The VPN is up\n";
-		this->{turnoffButton}->setEnabled(1);
+	} elsif ($api_status == NET_NEGATIVE) {
+		$status_text .= "The VPN is up, but not in use\n";
 	} elsif ($api_status == NET_CONFIRMING) {
 		$status_text .= "The VPN is being confirmed\n";
-		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_UNCONFIRMED) {
 		$status_text .= "The VPN is unconfirmed\n";
-		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text .= "The VPN is down\n";
-		this->{turnoffButton}->setEnabled(1);
 	} else {
 		$status_text .= "The VPN is down\n";
-		this->{turnoffButton}->setEnabled(0);
 	}
 
 	my $current_state_string = getMonitorState();
@@ -423,41 +421,49 @@ sub setButtons {
 	}		
 	
 	# set turnoffButton and refreshButton
-	if ( $network eq "PROTECTED" || $network eq "UNCONFIRMED") {
+	if ( $network eq "PROTECTED" || $network eq "NEGATIVE" ||
+	   $network eq "CONFIRMING" || $network eq "UNCONFIRMED" ) {
 		this->{turnoffButton}->setText(this->tr('Turn off'));
 		this->{turnoffButton}->setEnabled(1);
 		this->{refreshButton}->setText(this->tr('Refresh'));
 		this->{refreshButton}->setEnabled(1);
+		this->{userpassButton}->setEnabled(1);
 	} elsif ( $network eq "OFFLINE" ) {
 		this->{turnoffButton}->setText(this->tr('Fix'));
 		this->{turnoffButton}->setEnabled(1);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
+		this->{userpassButton}->setEnabled(0);
 	} elsif ( $task eq "crippled" || $network eq "CRIPPLED" ) {
 		this->{turnoffButton}->setText(this->tr('No VPN'));
 		this->{turnoffButton}->setEnabled(1);
 		this->{refreshButton}->setText(this->tr('VPN'));
 		this->{refreshButton}->setEnabled(1);
+		this->{userpassButton}->setEnabled(0);
 	} elsif ( $network eq "BROKEN" || $network eq "ERROR" ) {
 		this->{turnoffButton}->setText(this->tr('Wait'));
 		this->{turnoffButton}->setEnabled(0);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
-	} elsif ( $monitor eq "Enabled" && $network ne "PROTECTED" ) {
+		this->{userpassButton}->setEnabled(0);
+	} elsif ( $monitor eq "Enabled" ) {
 		this->{turnoffButton}->setText(this->tr('Disable'));
 		this->{turnoffButton}->setEnabled(1);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(1);
+		this->{userpassButton}->setEnabled(1);
 	} elsif ( $monitor eq "Disabled" ) {
 		this->{turnoffButton}->setText(this->tr('Turn off'));
 		this->{turnoffButton}->setEnabled(0);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(1);
+		this->{userpassButton}->setEnabled(1);
 	} else {
 		this->{turnoffButton}->setText(this->tr('Turn-off'));
-		this->{turnoffButton}->setEnabled(1);
+		this->{turnoffButton}->setEnabled(0);
 		this->{refreshButton}->setText(this->tr('Start'));
 		this->{refreshButton}->setEnabled(0);
+		this->{userpassButton}->setEnabled(0);
 	}
 }
 
@@ -759,7 +765,7 @@ sub updateDefaultVpn {
 	undoCrippling() if (getCripplingStatus(DEBUG));
 
 	my $api_status = getNetStatus();
-	if ($api_status == NET_PROTECTED ||
+	if ($api_status == NET_PROTECTED || $api_status == NET_NEGATIVE || 
 	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
 		$status_text = "The VPN connection is deactivating,\n";
 		$status_text .= "Please hold on.\n";
@@ -1345,7 +1351,7 @@ sub updateStatusNormal {
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		this->{internalTimer}->start(60*1000);
-	} elsif ($api_status == NET_UNCONFIRMED) {
+	} elsif ($api_status == NET_UNCONFIRMED || $api_status == NET_NEGATIVE) {
 		this->{internalTimer}->start(15*1000);
 	} elsif ($api_status == NET_CONFIRMING) {
 		this->{internalTimer}->start(1000);
@@ -1521,7 +1527,7 @@ sub updateStatusOther {
 			$status_text_changed = 1;
 		} elsif ($tmp_previous == NET_BROKEN && $current_status != NET_BROKEN) {
 			# note: no recovered-text for NET_UNKNOWN, since GUI starts with UNKNOWN state
-			if ($current_status == NET_PROTECTED) {
+			if ($current_status == NET_PROTECTED || $current_status == NET_NEGATIVE) {
 				$status_text .= "Recovered to protected mode.\n";
 				$status_text_changed = 1;
 			} elsif ($current_status == NET_UNPROTECTED) {
@@ -1529,7 +1535,7 @@ sub updateStatusOther {
 				$status_text_changed = 1;
 			}
 		} elsif ( $tmp_previous == NET_ERROR && $current_status != NET_ERROR) {
-			if ($current_status == NET_PROTECTED) {
+			if ($current_status == NET_PROTECTED || $current_status == NET_NEGATIVE) {
 				$status_text .= "Monitor recovered, VPN is up.\n";
 				$status_text_changed = 1;
 			} elsif ($current_status == NET_UNPROTECTED) {
@@ -1539,6 +1545,9 @@ sub updateStatusOther {
 		} elsif ($tmp_previous == NET_OFFLINE && $current_status != NET_OFFLINE) {
 			if ($current_status == NET_PROTECTED) {
 				$status_text .= "Network connection recovered\nThe VPN is up\n";
+				$status_text_changed = 1;
+			} elsif ($current_status == NET_NEGATIVE) {
+				$status_text .= "Network connection recovered\nThe VPN is up, but not in use\n";
 				$status_text_changed = 1;
 			} elsif ($current_status == NET_UNPROTECTED) {
 				$status_text .= "Network connection recovered\nThe VPN is down\n";
@@ -1553,6 +1562,9 @@ sub updateStatusOther {
 		} elsif ($tmp_previous == NET_UNCONFIRMED && $current_status != NET_UNCONFIRMED) {
 			if ($current_status == NET_PROTECTED) {
 				$status_text .= "The VPN is confirmed\n";
+				$status_text_changed = 1;
+			} elsif ($current_status == NET_NEGATIVE) {
+				$status_text .= "The VPN is up, but not in use\n";
 				$status_text_changed = 1;
 			} elsif ($current_status == NET_UNPROTECTED) {
 				$status_text .= "The VPN is down\n";
