@@ -66,12 +66,13 @@ use constant {
 use constant {
 	NET_UNPROTECTED	=> 0,
 	NET_PROTECTED	=> 1,
-	NET_OFFLINE     => 2,
-	NET_CRIPPLED	=> 3,
-	NET_BROKEN	=> 4,
-	NET_UNCONFIRMED => 5,
-	NET_ERROR	=> 99,
-	NET_UNKNOWN	=> 100
+	NET_CONFIRMING  => 2,
+	NET_UNCONFIRMED => 3,
+	NET_CRIPPLED	=> 4,
+	NET_OFFLINE     => 5,
+	NET_BROKEN	=> 6,
+	NET_ERROR	=> 7,
+	NET_UNKNOWN	=> 8
 };
 
 use constant {
@@ -80,8 +81,10 @@ use constant {
 };
 
 use constant {
-	API_CHECK_TIMEOUT       => 10,
-	DETECT_CHANGE_INTERVAL  => 60
+	API_CHECK_TIMEOUT         => 10,
+	DETECT_CHANGE_INTERVAL    => 60,
+	CRIPPLE_WHEN_UNPROTECTED  => 'TRUE',
+	CRIPPLE_WHEN_UNCONFIRMED  => 'FALSE'
 };
 
 ################	  Package-Wide Globals		################
@@ -111,23 +114,23 @@ my %TCP_Server_Connections;     # Keep TCP server alive after initialization
 sub http_req_async
 {
 	my $url = shift;
-	$Current_Status = NET_UNCONFIRMED;
+	$Current_Status = NET_CONFIRMING;
 	$Current_Update_Time = time();
 	$Http_Request_Time = $Current_Update_Time;
 	http_get $url, timeout => API_CHECK_TIMEOUT, sub {
 		my ($data, $headers) = @_;
 
 		if ( !defined($data) ) {
-			$Current_Status = NET_UNKNOWN;
-			$ctx->log(error => "http_req_async request error, Current_Status = NET_UNKNOWN");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "Current_Task = " . $Current_Task) if DEBUG > 0;
+			$Current_Status = NET_UNCONFIRMED;
+			$ctx->log(error => "http_req_async request error, Current_Status = NET_UNCONFIRMED");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 0;
 			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef');
 			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef');
 			$Current_Update_Time = time();
 			return;
 		} elsif ( (length $data == 0) || ($headers->{"content-length"} == 0) ) {
-			$Current_Status = NET_UNKNOWN;
-			$ctx->log(error => "http_req_async returned empty content, Current_Status = NET_UNKNOWN");
+			$Current_Status = NET_UNCONFIRMED;
+			$ctx->log(error => "http_req_async returned empty content, Current_Status = NET_UNCONFIRMED");
 			$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 0;
 			$ctx->log(debug => "\tContent-length: " . (defined($headers->{'content-length'}) ? $headers->{'content-length'} : 'undef') . "\tType: " . ($headers->{'content-type'} || 'undef')) if DEBUG > 0;
 			$Current_Update_Time = time();
@@ -147,9 +150,9 @@ sub http_req_async
 		} elsif ($status eq 'Protected') { 
 			$Current_Status = NET_PROTECTED; 
 		} else {
-			$Current_Status = NET_UNKNOWN;
-			$ctx->log(error => "http_req_async returned unparseable data, Current_Status = NET_UNKNOWN");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "Current_Task = " . $Current_Task) if DEBUG > 0;
+			$Current_Status = NET_UNCONFIRMED;
+			$ctx->log(error => "http_req_async returned unparseable data, Current_Status = NET_UNCONFIRMED");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 0;
 			$data =~ s/\R//g if DEBUG > 1;
 			$ctx->log(debug => "http_req_async data=$data") if DEBUG > 1;
 		}
@@ -227,10 +230,13 @@ sub quick_net_status
 		return NET_BROKEN;
 	}
 	if ($tun0_exists) {
-		if ($Current_Status == NET_UNCONFIRMED) {
+		if ($Current_Status == NET_CONFIRMING) {
+			return NET_CONFIRMING;
+		} elsif ($Current_Status == NET_UNCONFIRMED) {
 			return NET_UNCONFIRMED;
+		} else {
+			return NET_PROTECTED;
 		}
-		return NET_PROTECTED;
 	}
 
 	my $sys_net_path = "/sys/class/net/";
@@ -379,6 +385,7 @@ sub get_status_text
 	elsif ($status == NET_OFFLINE) { return "OFFLINE"; }
 	elsif ($status == NET_CRIPPLED) { return "CRIPPLED"; }
 	elsif ($status == NET_BROKEN) { return "BROKEN"; }
+	elsif ($status == NET_CONFIRMING) { return "CONFIRMING"; }
 	elsif ($status == NET_UNCONFIRMED) { return "UNCONFIRMED"; }
 	elsif ($status == NET_ERROR) { return "ERROR"; }
 
@@ -824,6 +831,8 @@ sub popup_dialog
 		$msg = 'Network is BROKEN';
 	} elsif ($status_to_display == NET_UNCONFIRMED) {
 		$msg = 'VPN connection status is UNCONFIRMED';
+	} elsif ($status_to_display == NET_CONFIRMING) {
+		$msg = 'VPN connection status is being confirmed';
 	} else {
 		$msg = 'Network is in an unknown status (' . $status_to_display . ')';
 	}
@@ -1041,7 +1050,8 @@ sub undo_crippling_on_error
 	my $msg = shift;
 	$ctx->log(error => "undo_crippling child process died unexpectedly: " . $msg);
 	$Current_Status = quick_net_status();
-	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED || $Current_Status == NET_UNCONFIRMED) {
+	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNPROTECTED ||
+	   $Current_Status == NET_UNCONFIRMED || $Current_Status == NET_CONFIRMING) {
 		return 0;
 	} else {
 		system("/usr/bin/rm -f /etc/resolv.conf");
@@ -1139,7 +1149,15 @@ sub spawn_retry_vpn
 sub retry_vpn_callback
 {
 	set_current_task_to_idle();
-	if (quick_net_status() == NET_UNPROTECTED) {
+
+	$Current_Status = quick_net_status();
+	if ($Current_Status == NET_UNPROTECTED
+	   && (CRIPPLE_WHEN_UNPROTECTED eq 'TRUE' || CRIPPLE_WHEN_UNPROTECTED eq '1') ) {
+		redirect_page();
+		update_status_file(NET_CRIPPLED);
+		popup_dialog(NET_CRIPPLED);
+	} elsif ( ($Current_Status == NET_CONFIRMING || $Current_Status == NET_UNCONFIRMED)
+	   && (CRIPPLE_WHEN_UNCONFIRMED eq 'TRUE' || CRIPPLE_WHEN_UNCONFIRMED eq '1') ) {
 		redirect_page();
 		update_status_file(NET_CRIPPLED);
 		popup_dialog(NET_CRIPPLED);
@@ -1153,16 +1171,27 @@ sub retry_vpn_on_error
 	set_current_task_to_idle();
 	my $msg = shift;
 	$ctx->log(error => "Retry_vpn child process died unexpectedly: " . $msg);
+
 	$Current_Status = quick_net_status();
-	if ($Current_Status == NET_PROTECTED || $Current_Status == NET_UNCONFIRMED) {
+	if ($Current_Status == NET_PROTECTED) {
 		return 0;
-	} elsif ($Current_Status == NET_UNPROTECTED) {
+	} elsif ( $Current_Status == NET_OFFLINE || $Current_Status == NET_BROKEN ||
+	   $Current_Status == NET_ERROR || $Current_Status == NET_UNKNOWN ) {
+		system("/usr/bin/rm -f /etc/resolv.conf");
+		system("/sbin/rcnetwork restart");
+		return 0;
+	}
+
+	if ($Current_Status == NET_UNPROTECTED
+	   && (CRIPPLE_WHEN_UNPROTECTED eq 'TRUE' || CRIPPLE_WHEN_UNPROTECTED eq '1') ) {
 		redirect_page();
 		update_status_file(NET_CRIPPLED);
 		popup_dialog(NET_CRIPPLED);
-	} else {
-		system("/usr/bin/rm -f /etc/resolv.conf");
-		system("/sbin/rcnetwork restart");
+	} elsif ( ($Current_Status == NET_CONFIRMING || $Current_Status == NET_UNCONFIRMED)
+	   && (CRIPPLE_WHEN_UNCONFIRMED eq 'TRUE' || CRIPPLE_WHEN_UNCONFIRMED eq '1') ) {
+		redirect_page();
+		update_status_file(NET_CRIPPLED);
+		popup_dialog(NET_CRIPPLED);
 	}
 	return 0;
 }
@@ -1193,10 +1222,13 @@ sub detect_change
 	);
 
 	# do not retry/redirect if previous state was CRIPPLED, redirect on next iteration
-	if ($Current_Status == NET_UNPROTECTED and $tmp_previous != NET_CRIPPLED) {
-		# spawn_retry_vpn calls retry_vpn_callback when it finishes
-		spawn_retry_vpn();
-		return(0);
+	if ($tmp_previous != NET_CRIPPLED) {
+		if ($Current_Status == NET_UNPROTECTED ||
+		   $Current_Status == NET_CONFIRMING || $Current_Status == NET_UNCONFIRMED) {
+			# spawn_retry_vpn calls redirect_page when it finishes
+			spawn_retry_vpn();
+			return(0);
+		}
 	}
 
 	# update Current_Task in case callbacks failed to be called

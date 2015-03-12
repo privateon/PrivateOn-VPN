@@ -52,14 +52,15 @@ use constant {
 };
 
 use constant {
-	NET_UNPROTECTED => 0,
-	NET_PROTECTED   => 1,
-	NET_OFFLINE     => 2,
-	NET_CRIPPLED    => 3,
-	NET_BROKEN      => 4,
-	NET_UNCONFIRMED => 5,
-	NET_ERROR       => 99,
-	NET_UNKNOWN     => 100	
+	NET_UNPROTECTED	=> 0,
+	NET_PROTECTED	=> 1,
+	NET_CONFIRMING  => 2,
+	NET_UNCONFIRMED => 3,
+	NET_CRIPPLED	=> 4,
+	NET_OFFLINE     => 5,
+	NET_BROKEN	=> 6,
+	NET_ERROR	=> 7,
+	NET_UNKNOWN	=> 8
 };
 
 use constant {
@@ -143,7 +144,7 @@ sub NEW {
 		this->{updateStatusMode} = 'other';
 		this->{lastPtyRead} = time();
 		this->{internalTimer}->start(1000);
-	} elsif ($api_status == NET_UNCONFIRMED) {
+	} elsif ($api_status == NET_CONFIRMING) {
 		this->{internalTimer}->start(1000);
 	} else {
 		this->{internalTimer}->start(20*1000);
@@ -342,7 +343,8 @@ sub showNetStatus {
 	my $status_text;
 	my $monitor_online = 0;
 
-	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) {
+	if ( $api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED ||
+	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED ) {
 		$status_text = "The network is online\n";
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text = "The network is in safemode\n";
@@ -352,6 +354,9 @@ sub showNetStatus {
 
 	if ($api_status == NET_PROTECTED) {
 		$status_text .= "The VPN is up\n";
+		this->{turnoffButton}->setEnabled(1);
+	} elsif ($api_status == NET_CONFIRMING) {
+		$status_text .= "The VPN is being confirmed\n";
 		this->{turnoffButton}->setEnabled(1);
 	} elsif ($api_status == NET_UNCONFIRMED) {
 		$status_text .= "The VPN is unconfirmed\n";
@@ -754,7 +759,8 @@ sub updateDefaultVpn {
 	undoCrippling() if (getCripplingStatus(DEBUG));
 
 	my $api_status = getNetStatus();
-	if ($api_status == NET_PROTECTED || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
+	if ($api_status == NET_PROTECTED ||
+	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
 		$status_text = "The VPN connection is deactivating,\n";
 		$status_text .= "Please hold on.\n";
 		setStatusText($status_text);
@@ -1305,26 +1311,25 @@ sub updateStatus {
 
 sub updateStatusNormal {
 	# initialize persistent variables
-	state $unconfirmed_counter = 0;
+	state $confirming_counter = 0;
 
 	print "@" if DEBUG > 2;
 
 	my $api_status = getApiStatus();
-	if ($api_status == NET_UNCONFIRMED) {
-		$unconfirmed_counter++;
-		if ($unconfirmed_counter == 1) {
-			# continue subroutine to change status text to unconfirmed 
-			this->{internalTimer}->start(1000);
-		} elsif ($unconfirmed_counter < API_CHECK_TIMEOUT) {
+	if ($api_status == NET_CONFIRMING) {
+		$confirming_counter++;
+		if ($confirming_counter == 1) {
+			# continue subroutine to change status text to unconfirmed
+		} elsif ($confirming_counter < API_CHECK_TIMEOUT) {
 			# ignore status change until request has timed out
 			this->{internalTimer}->start(1000);
 			return;
 		} else {
-			# request had timed out, slow down timer and continue
-			this->{internalTimer}->start(10*1000);
+			# change status to unconfirmed if request timeout failed
+			$api_status = NET_UNCONFIRMED;
 		}
 	} else {
-		$unconfirmed_counter = 0;
+		$confirming_counter = 0;
 	}
 
 	# display net/monitor status
@@ -1341,7 +1346,9 @@ sub updateStatusNormal {
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		this->{internalTimer}->start(60*1000);
 	} elsif ($api_status == NET_UNCONFIRMED) {
-		return;
+		this->{internalTimer}->start(15*1000);
+	} elsif ($api_status == NET_CONFIRMING) {
+		this->{internalTimer}->start(1000);
 	} elsif ($api_status == NET_CRIPPLED) { 
 		this->{updateStatusMode} = 'other';
 		this->{lastPtyRead} = time();
@@ -1359,7 +1366,7 @@ sub updateStatusOther {
 	state $previous_status = 100;
 	state $reset_previous_status = 1;
 	state $previous_monitor_state = 0;
-	state $unconfirmed_counter = 0;
+	state $confirming_counter = 0;
 
 	my $current_time = time();
 	my $status = this->{statusOutput};
@@ -1454,16 +1461,17 @@ sub updateStatusOther {
 	}
 	$previous_status = $current_status;
 
-	# clear unconfirmed counter before tampering with current_status variable
-	if ($current_status != NET_UNCONFIRMED) {
-		$unconfirmed_counter = 0;
+	# clear confirming counter before tampering with current_status variable
+	if ($current_status != NET_CONFIRMING) {
+		$confirming_counter = 0;
 	}
 
 	# compare current_status to previous_status and inform the user about changes
 	if ($current_status != $tmp_previous) {
 		forceRefresh();
 
-		if ($current_status == NET_OFFLINE && $tmp_previous != NET_OFFLINE && $tmp_previous != NET_UNKNOWN) {
+		if ($current_status == NET_OFFLINE && $tmp_previous != NET_OFFLINE && 
+		   $tmp_previous != NET_UNKNOWN) {
 			$status_text .= "Network offline, please wait.\n";
 			$status_text_changed = 1;
 		} elsif ($current_status == NET_BROKEN && $tmp_previous != NET_BROKEN) {
@@ -1480,13 +1488,19 @@ sub updateStatusOther {
 			$status_text .= "Network placed in safemode, check VPN settings.\n";
 			$status_text_changed = 1;
 		} elsif ($current_status == NET_UNCONFIRMED && $tmp_previous != NET_UNCONFIRMED) {
-			$unconfirmed_counter++;
-			if ($unconfirmed_counter < API_CHECK_TIMEOUT) {
-				# ignore status change until request has timed out
+			$status_text .= "Network status is unconfirmed.\n";
+			$status_text_changed = 1;
+		} elsif ($current_status == NET_CONFIRMING && $tmp_previous != NET_CONFIRMING) {
+			$confirming_counter++;
+			if ($confirming_counter < API_CHECK_TIMEOUT) {
+				# ignore status change until request has timed out or monitor has changed it to NET_UNCONFIRMED
 				$current_status = $tmp_previous;
 				$previous_status = $tmp_previous;
 				this->{internalTimer}->start(1000);
 			} else {
+				# change status to unconfirmed if request timeout failed
+				$current_status = NET_UNCONFIRMED;
+				$previous_status = NET_UNCONFIRMED;
 				$status_text .= "Network status is unconfirmed.\n";
 				$status_text_changed = 1;
 			}
@@ -1501,12 +1515,11 @@ sub updateStatusOther {
 			this->{turnoffButton}->setEnabled(1);
 		}
 
-		if ($current_status != NET_CRIPPLED && $tmp_previous == NET_CRIPPLED) {
+		if ($tmp_previous == NET_CRIPPLED && $current_status != NET_CRIPPLED) {
 			this->{userpassButton}->setEnabled(1);
 			$status_text .= "Network restored from safemode.\n";
 			$status_text_changed = 1;
-		} elsif ( ($current_status != NET_OFFLINE || $current_status != NET_BROKEN || $current_status != NET_ERROR || $current_status != NET_UNKNOWN) 
-		   && ($tmp_previous == NET_BROKEN) ) {
+		} elsif ($tmp_previous == NET_BROKEN && $current_status != NET_BROKEN) {
 			# note: no recovered-text for NET_UNKNOWN, since GUI starts with UNKNOWN state
 			if ($current_status == NET_PROTECTED) {
 				$status_text .= "Recovered to protected mode.\n";
@@ -1515,8 +1528,7 @@ sub updateStatusOther {
 				$status_text .= "Recovered to unprotected mode.\n";
 				$status_text_changed = 1;
 			}
-		} elsif ( ($current_status != NET_OFFLINE || $current_status != NET_BROKEN || $current_status != NET_ERROR || $current_status != NET_UNKNOWN) 
-		   && ($tmp_previous == NET_ERROR) ) {
+		} elsif ( $tmp_previous == NET_ERROR && $current_status != NET_ERROR) {
 			if ($current_status == NET_PROTECTED) {
 				$status_text .= "Monitor recovered, VPN is up.\n";
 				$status_text_changed = 1;
@@ -1524,8 +1536,7 @@ sub updateStatusOther {
 				$status_text .= "Monitor recovered, VPN is down.\n";
 				$status_text_changed = 1;
 			}
-		} elsif ( ($current_status != NET_OFFLINE || $current_status != NET_BROKEN || $current_status != NET_ERROR || $current_status != NET_UNKNOWN) 
-		   && ($tmp_previous == NET_OFFLINE) ) {
+		} elsif ($tmp_previous == NET_OFFLINE && $current_status != NET_OFFLINE) {
 			if ($current_status == NET_PROTECTED) {
 				$status_text .= "Network connection recovered\nThe VPN is up\n";
 				$status_text_changed = 1;
@@ -1533,19 +1544,19 @@ sub updateStatusOther {
 				$status_text .= "Network connection recovered\nThe VPN is down\n";
 				$status_text_changed = 1;
 			} elsif ($current_status == NET_UNCONFIRMED) {
-				$status_text .= "Network connection recovered\nThe network status is still unconfirmed\n";
+				$status_text .= "Network connection recovered\nThe VPN is unconfirmed\n";
+				$status_text_changed = 1;
+			} elsif ($current_status == NET_CONFIRMING) {
+				$status_text .= "Network connection recovered\nThe VPN is being confirmed\n";
 				$status_text_changed = 1;
 			}
-		} elsif ( ($current_status != NET_OFFLINE || $current_status != NET_BROKEN || $current_status != NET_ERROR || $current_status != NET_UNKNOWN || $current_status != NET_UNCONFIRMED) 
-		   && ($tmp_previous == NET_UNCONFIRMED) ) {
-		   	if ($unconfirmed_counter > 5) {
-				if ($current_status == NET_PROTECTED) {
-					$status_text .= "The VPN is up\n";
-					$status_text_changed = 1;
-				} elsif ($current_status == NET_UNPROTECTED) {
-					$status_text .= "The VPN is down\n";
-					$status_text_changed = 1;
-				}
+		} elsif ($tmp_previous == NET_UNCONFIRMED && $current_status != NET_UNCONFIRMED) {
+			if ($current_status == NET_PROTECTED) {
+				$status_text .= "The VPN is confirmed\n";
+				$status_text_changed = 1;
+			} elsif ($current_status == NET_UNPROTECTED) {
+				$status_text .= "The VPN is down\n";
+				$status_text_changed = 1;
 			}
 		}
 	}

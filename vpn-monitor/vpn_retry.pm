@@ -24,14 +24,15 @@ use constant {
 };
 
 use constant {
-	NET_UNPROTECTED => 0,
-	NET_PROTECTED   => 1,
-	NET_OFFLINE     => 2,
-	NET_CRIPPLED    => 3,
-	NET_BROKEN      => 4,
-	NET_UNCONFIRMED => 5,
-	NET_ERROR       => 99,
-	NET_UNKNOWN     => 100
+	NET_UNPROTECTED	=> 0,
+	NET_PROTECTED	=> 1,
+	NET_CONFIRMING  => 2,
+	NET_UNCONFIRMED => 3,
+	NET_CRIPPLED	=> 4,
+	NET_OFFLINE     => 5,
+	NET_BROKEN	=> 6,
+	NET_ERROR	=> 7,
+	NET_UNKNOWN	=> 8
 };
 
 

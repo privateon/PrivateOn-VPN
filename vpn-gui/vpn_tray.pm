@@ -123,7 +123,7 @@ sub setIcon
 			$index = CRIPPLED;
 		} elsif ( $network eq "UNPROTECTED" ) {
 			$index = UNPROTECTED;
-		} elsif ( $network eq "PROTECTED" ) {
+		} elsif ( $network eq "PROTECTED" || $network eq "CONFIRMING" || $network eq "UNCONFIRMED") {
 			$index = PROTECTED;
 		} elsif ( $network eq "BROKEN" || $network eq "OFFLINE" ) {
 			$index = BROKEN;
