@@ -410,103 +410,6 @@ sub log_net_status
 }
 
 
-sub take_a_break
-{
-	# kill vpn_retry instance if running
-	system("/bin/pkill -9 vpn_retry");
-
-	# destroy timer / re-enable crippling after 1 minute
-	undef $Temporary_Disable_Timer; 
-	$Temporary_Disable_Timer = AnyEvent->timer(
-		after => 60, 
-		cb => sub {
-			$Temporary_Disable = 0;
-			$Current_Task = "idle";
-			$ctx->log(debug => "Temporary disable crippling ended") if DEBUG > 0;
-		},
-	);
-	$ctx->log(debug => "Take-a-break requested, Temporary disable crippling") if DEBUG > 0;
-}
-
-
-sub change_active_monitoring
-{
-	my $enable_monitor = shift;
-
-	# disable temporary disable
-	$Temporary_Disable = 0;
-
-	# kill vpn_retry instance if running
-	system("/bin/pkill -9 vpn_retry");
-
-	if ($enable_monitor) {
-		# restart timers
-		undef $Detect_Change_Timer;
-		$Detect_Change_Timer = AnyEvent->timer(
-			after => 40,
-			interval => DETECT_CHANGE_INTERVAL,
-			cb => \&detect_change,
-		);
-		undef $Api_Check_Timer;
-		$Api_Check_Timer = AnyEvent->timer(
-			after => 40 - API_CHECK_TIMEOUT,
-			cb => \&get_api_status,
-		);
-
-		$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
-	} else {
-		undef $Detect_Change_Timer;
-		undef $Api_Check_Timer;
-	}
-
-	# read and update ini
-	my $vpn_ini;
-	unless (open $vpn_ini, "<" . INI_FILE) {
-		my $error = $!;
-		if ( -e INI_FILE ) {
-			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $error);
-		} else {
-			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
-			$ctx->log(info => "   Fire up the GUI and press Server to download server list and create ini file.");
-		}
-		$ctx->log(info => "Active monitoring state change is not persistent because ini file parsing failed.");
-		return 1;
-	}
-	my @vpn_ini_lines = <$vpn_ini>;
-	close $vpn_ini;
-
-	unless (open VPN_INI, ">" . INI_FILE) {
-		$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
-		$ctx->log(info => "Active monitoring state change is not persistent because ini file writing failed.");
-		return 1;
-	}
-
-	my $has_been_written = 0;
-	foreach my $line (@vpn_ini_lines) {
-		if ($line =~ /monitor/) {
-			if ($enable_monitor) {
-				print VPN_INI "monitor=enabled\n";
-			} else {
-				print VPN_INI "monitor=disabled\n";
-			}
-			$has_been_written = 1;
-		} else {
-			print VPN_INI $line;
-		}
-	}
-	if ($has_been_written == 0) {
-		if ($enable_monitor) {
-			print VPN_INI "monitor=enabled\n";
-		} else {
-			print VPN_INI "monitor=disabled\n";
-		}
-	}
-	close VPN_INI;
-
-	return 0;
-}
-
-
 ################	    Helper subroutines		################
 
 sub print_usage_message
@@ -688,15 +591,118 @@ sub get_previous_status_from_file
 }
 
 
+sub take_a_break
+{
+	$Temporary_Disable = 1; # disable crippling
+
+	# kill vpn_retry instance if running
+	system("/bin/pkill -9 vpn_retry");
+
+	# destroy timer / re-enable crippling after 1 minute
+	undef $Temporary_Disable_Timer; 
+	$Temporary_Disable_Timer = AnyEvent->timer(
+		after => 60, 
+		cb => sub {
+			$Temporary_Disable = 0;
+			$Current_Task = "idle";
+			$ctx->log(debug => "Temporary disable crippling ended") if DEBUG > 0;
+		},
+	);
+	$ctx->log(debug => "Take-a-break requested, Temporary disable crippling") if DEBUG > 0;
+}
+
+
 sub set_current_task_to_idle
 {
-	# restore task to "temporary" if Temporary_Disable_Timer still running
-	if ($Temporary_Disable) {
+	my $override_temporary_disable = shift;
+
+	# set task to "temporary" if Temporary_Disable_Timer still running and override is not requested
+	if ($override_temporary_disable) {
+		$Current_Task = "idle";
+	} elsif ($Temporary_Disable) {
 		$Current_Task = "temporary";
 	} else {
 		$Current_Task = "idle";
 	}
 	return;
+}
+
+
+sub change_active_monitoring
+{
+	my $enable_monitor = shift;
+
+	# disable temporary disable
+	$Temporary_Disable = 0;
+
+	# kill vpn_retry instance if running
+	system("/bin/pkill -9 vpn_retry");
+
+	if ($enable_monitor) {
+		# restart timers
+		undef $Detect_Change_Timer;
+		$Detect_Change_Timer = AnyEvent->timer(
+			after => 40,
+			interval => DETECT_CHANGE_INTERVAL,
+			cb => \&detect_change,
+		);
+		undef $Api_Check_Timer;
+		$Api_Check_Timer = AnyEvent->timer(
+			after => 40 - API_CHECK_TIMEOUT,
+			cb => \&get_api_status,
+		);
+
+		$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
+	} else {
+		undef $Detect_Change_Timer;
+		undef $Api_Check_Timer;
+	}
+
+	# read and update ini
+	my $vpn_ini;
+	unless (open $vpn_ini, "<" . INI_FILE) {
+		my $error = $!;
+		if ( -e INI_FILE ) {
+			$ctx->log(error => "Could not open " . INI_FILE . " for reading.  Reason: " . $error);
+		} else {
+			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
+			$ctx->log(info => "   Fire up the GUI and press Server to download server list and create ini file.");
+		}
+		$ctx->log(info => "Active monitoring state change is not persistent because ini file parsing failed.");
+		return 1;
+	}
+	my @vpn_ini_lines = <$vpn_ini>;
+	close $vpn_ini;
+
+	unless (open VPN_INI, ">" . INI_FILE) {
+		$ctx->log(error => "Could not open " . INI_FILE . " for writing.  Reason: " . $!);
+		$ctx->log(info => "Active monitoring state change is not persistent because ini file writing failed.");
+		return 1;
+	}
+
+	my $has_been_written = 0;
+	foreach my $line (@vpn_ini_lines) {
+		if ($line =~ /monitor/) {
+			if ($enable_monitor) {
+				print VPN_INI "monitor=enabled\n";
+			} else {
+				print VPN_INI "monitor=disabled\n";
+			}
+			$has_been_written = 1;
+		} else {
+			print VPN_INI $line;
+		}
+	}
+	if ($has_been_written == 0) {
+		if ($enable_monitor) {
+			print VPN_INI "monitor=enabled\n";
+		} else {
+			print VPN_INI "monitor=disabled\n";
+		}
+	}
+	close VPN_INI;
+
+	return 0;
 }
 
 
@@ -1079,7 +1085,7 @@ sub spawn_undo_crippling
 
 sub undo_crippling_callback
 {
-	set_current_task_to_idle();
+	set_current_task_to_idle(0);
 	$Current_Status = quick_net_status();
 	update_status_file($Current_Status);
 	popup_dialog($Current_Status);
@@ -1089,7 +1095,7 @@ sub undo_crippling_callback
 
 sub undo_crippling_on_error
 {
-	set_current_task_to_idle();
+	set_current_task_to_idle(0);
 	my $msg = shift;
 	$ctx->log(error => "undo_crippling child process died unexpectedly: " . $msg);
 	$Current_Status = quick_net_status();
@@ -1151,7 +1157,7 @@ sub check_crippled
 	
 	# if not crippled, change task to idle or temporary
 	if ( $Current_Task eq "crippled" || $Current_Task eq "uncrippling" ) { 
-		set_current_task_to_idle();
+		set_current_task_to_idle(0);
 	}
 
 	return 0;
@@ -1191,7 +1197,7 @@ sub spawn_retry_vpn
 
 sub retry_vpn_callback
 {
-	set_current_task_to_idle();
+	set_current_task_to_idle(0);
 
 	$Current_Status = quick_net_status();
 	if ( $Current_Status == NET_UNPROTECTED && 
@@ -1210,7 +1216,7 @@ sub retry_vpn_callback
 
 sub retry_vpn_on_error
 {
-	set_current_task_to_idle();
+	set_current_task_to_idle(0);
 	my $msg = shift;
 	$ctx->log(error => "Retry_vpn child process died unexpectedly: " . $msg);
 
@@ -1467,8 +1473,11 @@ tcp_server(
 				$self->push_write("ok - called spawn_undo_crippling()\n");
 
 			} elsif ($buf eq "take-a-break") {
-				$Temporary_Disable = 1; # disable crippling
 				take_a_break();
+				$self->push_write("monitoring disabled for 1 minute\n");
+
+			} elsif ($buf eq "resume-idling") {
+				set_current_task_to_idle(1);
 				$self->push_write("monitoring disabled for 1 minute\n");
 
 			} elsif ($buf eq "enable-monitor") {
