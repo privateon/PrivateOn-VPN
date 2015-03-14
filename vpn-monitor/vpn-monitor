@@ -365,7 +365,7 @@ sub get_monitor_state
 	}
 
 	# task part values = crippled/uncrippling/retrying/temporary/idle
-	if ($Temporary_Disable) {
+	if ($Current_Task eq 'temporary') {
 		$output = "Disabled-temporary";
 	} else {
 		$output .= $Current_Task;
@@ -594,6 +594,7 @@ sub get_previous_status_from_file
 sub take_a_break
 {
 	$Temporary_Disable = 1; # disable crippling
+	$Current_Task = "temporary";
 
 	# kill vpn_retry instance if running
 	system("/bin/pkill -9 vpn_retry");
