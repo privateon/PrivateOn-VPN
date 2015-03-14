@@ -49,37 +49,41 @@ use constant {
 ################           Helper subroutines           ################
 
 sub sendBackendCommand {
-	my $command = shift;
+	my ($command, $debug_flag) = @_;
 
 	# make INET connection refused nonfatal
-	eval {	
+	eval {
 		$OUTPUT_AUTOFLUSH = 1;
 		my $sock = IO::Socket::INET->new(
 			PeerHost => IPC_HOST,
 			PeerPort => IPC_PORT,
 			Proto => 'tcp',
 		);
-	
+
 		return unless $sock;
 		$sock->send( $command . "\n" );
 		shutdown($sock, 1);
 		$sock->close();
+
+		if ( defined($debug_flag) && $debug_flag > 1 ) {
+			print "\n\t\tCommand '" . $command . "' sent to vpn-monitor\n";
+		}
 	};
 }
 
 
 sub sendBackendQuery {
 	my $command = shift;
-	
+
 	# make INET connection refused nonfatal
-	eval {	
+	eval {
 		$OUTPUT_AUTOFLUSH = 1;
 		my $sock = IO::Socket::INET->new(
 			PeerHost => IPC_HOST,
 			PeerPort => IPC_PORT,
 			Proto => 'tcp',
 		);
-	
+
 		return NET_ERROR unless $sock;
 		$sock->send( $command . "\n" );
 		shutdown($sock, 1);
@@ -95,27 +99,38 @@ sub sendBackendQuery {
 ################            Backend Commands            ################
 
 sub takeABreak {
-	sendBackendCommand("take-a-break");
+	my $debug_flag = shift;
+	sendBackendCommand("take-a-break", $debug_flag);
+}
+
+sub resumeIdling {
+	my $debug_flag = shift;
+	sendBackendCommand("resume-idling", $debug_flag);
 }
 
 sub removeDispatcher {
-	sendBackendCommand("remove-dispatcher");
+	my $debug_flag = shift;
+	sendBackendCommand("remove-dispatcher", $debug_flag);
 }
 
 sub disableMonitor {
-	sendBackendCommand("disable-monitor");
+	my $debug_flag = shift;
+	sendBackendCommand("disable-monitor", $debug_flag);
 }
 
 sub enableMonitor {
-	sendBackendCommand("enable-monitor");
+	my $debug_flag = shift;
+	sendBackendCommand("enable-monitor", $debug_flag);
 }
 
 sub undoCrippling {
-	sendBackendCommand("undo-crippling");
+	my $debug_flag = shift;
+	sendBackendCommand("undo-crippling", $debug_flag);
 }
 
 sub forceRefresh {
-	sendBackendCommand("force-refresh");
+	my $debug_flag = shift;
+	sendBackendCommand("force-refresh", $debug_flag);
 }
 
 
@@ -126,12 +141,12 @@ sub getApiStatus {
 
 	# was response "say what?" for wrong command
 	if ($response =~ /say/i) {
-		print "Error: backend did not understand query \"get-api-status\" \n";
+		print "\nError: backend did not understand query \"get-api-status\" \n";
 		return NET_UNKNOWN;
 	}
 	# if not numeric
 	unless ($response =~ /^\d+$/ ) {
-		print "Error: backend query \"get-api-status\" gave non-numeric response \"$response\" \n";
+		print "\nError: backend query \"get-api-status\" gave non-numeric response \"$response\" \n";
 		return NET_UNKNOWN;
 	} 
 	return $response;
@@ -143,12 +158,12 @@ sub getNetStatus {
 
 	# was response "say what?" for wrong command
 	if ($response =~ /say/i) {
-		print "Error: backend did not understand query \"get-net-status\" \n";
+		print "\nError: backend did not understand query \"get-net-status\" \n";
 		return NET_UNKNOWN;
 	}
 	# if not numeric
 	unless ($response =~ /^\d+$/ ) {
-		print "Error: backend query \"get-net-status\" gave non-numeric response \"$response\" \n";
+		print "\nError: backend query \"get-net-status\" gave non-numeric response \"$response\" \n";
 		return NET_UNKNOWN;
 	} 
 	return $response;
@@ -161,7 +176,7 @@ sub getCripplingStatus {
 	my $response = sendBackendQuery("check-crippling");
 	if ($response) {
 		if ( defined($debug_flag) && $debug_flag > 0 ) {
- 			print "Debug: check-crippling returned test result \"$response\" \n";
+ 			print "\nDebug: check-crippling returned test result \"$response\" \n";
 		}
 		return 1;
 	}
@@ -175,7 +190,7 @@ sub getMonitorState {
 	my $response = sendBackendQuery("monitor-state");
 	unless ($response =~ /\S+-\S+-\S+/) {
 		if ( defined($debug_flag) && $debug_flag > 0 ) {
- 			print "Error: monitor-state returned invalid result \"$response\" \n";
+			print "\nError: monitor-state returned invalid result \"$response\" \n";
 		}
 		# assume disabled and unknown
 		$response = "Disabled-unknown-UNKNOWN";

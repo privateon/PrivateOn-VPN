@@ -318,8 +318,8 @@ sub isVpnActive {
 
 
 sub startTask {
-	takeABreak();
-	removeDispatcher();
+	takeABreak(DEBUG);
+	removeDispatcher(DEBUG);
 
 	# change mode so that pty writes are displayed
 	this->{updateStatusMode} = 'other';
@@ -766,7 +766,7 @@ sub updateDefaultVpn {
 
 	my $status_text;
 
-	undoCrippling() if (getCripplingStatus(DEBUG));
+	undoCrippling(DEBUG) if (getCripplingStatus(DEBUG));
 
 	my $api_status = getNetStatus();
 	if ($api_status == NET_PROTECTED || $api_status == NET_NEGATIVE || 
@@ -841,7 +841,7 @@ sub updateDefaultVpn {
 			}
 		}
 	} elsif ($api_status == NET_CRIPPLED) {
-		undoCrippling();
+		undoCrippling(DEBUG);
 	}
 
 	# return to QT event loop for 4 seconds
@@ -864,7 +864,6 @@ sub updateDefaultVpnResume {
 	my $configfile;
 
 	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 1;
-	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 3;
 	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
 	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
 
@@ -892,7 +891,7 @@ sub updateDefaultVpnResume {
 		$status_text .="supports protocol " . uc($stype) . ".\n";
 		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
-		forceRefresh();
+		forceRefresh(DEBUG);
 		return;
 	}
 
@@ -924,8 +923,8 @@ sub updateDefaultVpnResume {
 		setStatusText($status_text);
 		this->{internalTimer}->start(5*1000);
 	}
-	enableMonitor();
-	forceRefresh();
+	enableMonitor(DEBUG);
+	forceRefresh(DEBUG);
 }
 
 
@@ -1058,17 +1057,17 @@ sub turnOffVpn {
 
 	# network status = UNPROTECTED and monitor = Enabled
 	} elsif (this->{turnoffButton}->text eq "Disable") {
-		removeDispatcher();
-		disableMonitor();
+		removeDispatcher(DEBUG);
+		disableMonitor(DEBUG);
 		setStatusText("Monitor disabled.\n");
 		this->{turnoffButton}->setEnabled(0);
 		return 0;
 
 	# network status = CRIPPLED
 	} elsif (this->{turnoffButton}->text eq "No VPN") {
-		removeDispatcher();
-		disableMonitor();
-		undoCrippling();
+		removeDispatcher(DEBUG);
+		disableMonitor(DEBUG);
+		undoCrippling(DEBUG);
 		setStatusText("Safemode deactivated.\n");
 		this->{turnoffButton}->setEnabled(0);
 		return 0;
@@ -1090,10 +1089,10 @@ sub turnOffVpn {
 	$status_text .= "Please hold on.\n";
 
 	startTask();
-	disableMonitor();
+	disableMonitor(DEBUG);
 
 	if (getCripplingStatus(DEBUG)) {
-		undoCrippling();
+		undoCrippling(DEBUG);
 		$status_text = "The VPN connection is deactivated.\n";
 		setStatusText($status_text);
 		return 0;
@@ -1189,7 +1188,7 @@ sub turnOffVpnResume {
 		}
 	}
 	system("pkill -9 openvpn");
-	forceRefresh();
+	forceRefresh(DEBUG);
 	this->{internalTimer}->start(5*1000);
 
 	if ($failover_mode) {
@@ -1448,10 +1447,10 @@ sub updateStatusOther {
 	if ($reset_previous_status) {
 		$tmp_previous = $current_status;
 		$reset_previous_status = 0;
-		forceRefresh();
+		forceRefresh(DEBUG);
 		
 		# change the monitor's task status response to idle
-		resumeIdling();
+		resumeIdling(DEBUG);
 	}
 	$previous_status = $current_status;
 
@@ -1481,7 +1480,7 @@ sub updateStatusOther {
 
 	# compare current_status to previous_status and inform the user about changes
 	if ($current_status != $tmp_previous) {
-		forceRefresh();
+		forceRefresh(DEBUG);
 
 		if ($current_status == NET_OFFLINE && $tmp_previous != NET_OFFLINE && 
 		   $tmp_previous != NET_UNKNOWN) {
