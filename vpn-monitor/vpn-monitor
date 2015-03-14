@@ -1438,7 +1438,7 @@ tcp_server(
 			if ($buf eq "force-refresh") {
 				# force get_monitor_state to update Current_Status by time traveling to the age of disco
 				$Current_Update_Time = 0;
-				$self->push_write("refresh ok\n");
+				$self->push_write("ok - forcing refresh on next get_monitor_state\n");
 
 			} elsif ($buf eq "get-api-status") {
 				# don't make new http request before previous has had time to arrive
@@ -1474,11 +1474,11 @@ tcp_server(
 
 			} elsif ($buf eq "take-a-break") {
 				take_a_break();
-				$self->push_write("monitoring disabled for 1 minute\n");
+				$self->push_write("ok - monitoring disabled for 1 minute\n");
 
 			} elsif ($buf eq "resume-idling") {
 				set_current_task_to_idle(1);
-				$self->push_write("monitoring disabled for 1 minute\n");
+				$self->push_write("ok - task changed to idle\n");
 
 			} elsif ($buf eq "enable-monitor") {
 				$Monitor_Enabled = 1;

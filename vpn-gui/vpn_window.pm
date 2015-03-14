@@ -38,7 +38,9 @@ use Net::DBus qw(:typing);
 use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections);
-use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState takeABreak removeDispatcher disableMonitor enableMonitor undoCrippling forceRefresh);
+use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState 
+		takeABreak resumeIdling removeDispatcher 
+		disableMonitor enableMonitor undoCrippling forceRefresh);
 #use QtCore4::debug qw(ambiguous);
 #use Data::Dumper;
 
@@ -393,11 +395,13 @@ sub showNetStatus {
 	unless (-e INI_FILE) {
 		$status_text .= "No previous configuration file found.\n";
 		$status_text .= "Please click 'Servers' to create one.\n"; 
-		setStatusText($status_text);
 	}
-
-	print "\n$status_text\n" if DEBUG > 2;
 	setStatusText($status_text);
+
+	if (DEBUG > 2) {
+		$status_text =~ s/\R/  \|  /g;
+		print "\n|  $status_text\n";
+	}
 
 	return($monitor_online);
 }
@@ -859,8 +863,8 @@ sub updateDefaultVpnResume {
 	my $comment;
 	my $configfile;
 
-	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 0;
-	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 0;
+	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 1;
+	print "Countrylist is " . join(", ", @{$countrylist}) . "\n" if DEBUG > 3;
 	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
 	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
 
@@ -1438,6 +1442,19 @@ sub updateStatusOther {
 		this->{internalTimer}->start(10*1000);
 	}
 
+	# store network status for next iteration
+	my $current_status = getNetStatus();
+	my $tmp_previous = $previous_status;
+	if ($reset_previous_status) {
+		$tmp_previous = $current_status;
+		$reset_previous_status = 0;
+		forceRefresh();
+		
+		# change the monitor's task status response to idle
+		resumeIdling();
+	}
+	$previous_status = $current_status;
+
 	# update buttons and retrieve monitor state (runs only every 10 sec)
 	my $current_monitor_state = updateButtons();
 	if ($current_monitor_state) {
@@ -1456,16 +1473,6 @@ sub updateStatusOther {
 			$previous_monitor_state = $current_monitor_state;
 		}
 	}
-
-	# store network status for next iteration
-	my $current_status = getNetStatus();
-	my $tmp_previous = $previous_status;
-	if ($reset_previous_status) {
-		$tmp_previous = $current_status;
-		$reset_previous_status = 0;
-		forceRefresh();
-	}
-	$previous_status = $current_status;
 
 	# clear confirming counter before tampering with current_status variable
 	if ($current_status != NET_CONFIRMING) {
@@ -1576,7 +1583,6 @@ sub updateStatusOther {
 	if ($status_text_changed) {
 		setStatusText($status_text);
 	}
-	
 }
 
 1;
