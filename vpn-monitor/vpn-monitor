@@ -120,6 +120,7 @@ my %TCP_Server_Connections;     # Keep TCP server alive after initialization
 sub http_req_async
 {
 	my $url = shift;
+	$Current_Status = NET_CONFIRMING;
 
 	my $counter;
 	if (DEBUG > 0) {
@@ -128,9 +129,7 @@ sub http_req_async
 		$ctx->log(info => "http_req_async " . (defined($counter) ? "request # $counter, " : "") . "requesting " . $url) if DEBUG > 2;
 	}
 
-	$Current_Status = NET_CONFIRMING;
-	$Current_Update_Time = time();
-	$Http_Request_Time = $Current_Update_Time;
+	$Http_Request_Time = time();
 	http_get $url, timeout => API_CHECK_TIMEOUT, sub {
 		my ($data, $headers) = @_;
 
@@ -140,7 +139,6 @@ sub http_req_async
 			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
 			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef') if DEBUG > 0;
 			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef') if DEBUG > 0;
-			$Current_Update_Time = time();
 			return;
 		} elsif ( (length $data == 0) || ($headers->{"content-length"} == 0) ) {
 			$Current_Status = NET_UNCONFIRMED;
@@ -148,13 +146,11 @@ sub http_req_async
 			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
 			$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 2;
 			$ctx->log(debug => "\tContent-length: " . (defined($headers->{'content-length'}) ? $headers->{'content-length'} : 'undef') . "\tType: " . ($headers->{'content-type'} || 'undef')) if DEBUG > 0;
-			$Current_Update_Time = time();
 			return;
 		}
 
 		if ($data =~ /<meta name="flag" content="1"\/>/g) {
 			$Current_Status = NET_CRIPPLED;
-			$Current_Update_Time = time();
 			return;
 		}
 
@@ -171,11 +167,11 @@ sub http_req_async
 			$data =~ s/\R//g if DEBUG > 0;
 			$ctx->log(debug => "http_req_async data=$data") if DEBUG > 0;
 		}
-		$Current_Update_Time = time();
 	};
 
 	return $Current_Status;
 }
+
 
 sub tun0_exists
 {
@@ -192,22 +188,21 @@ sub tun0_exists
 	return $result;
 }
 
+
 sub get_api_status 
 {
+	$Current_Update_Time = time();
+
 	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
 	unless (open ROUTE, '<', '/proc/net/route') {
 		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
 		$Current_Status = NET_BROKEN;
-		$Current_Update_Time = time();
-		update_status_file($Current_Status);
 		return NET_BROKEN;
 	}
 	while (<ROUTE>) {
 		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
 			close ROUTE;
 			$Current_Status = NET_CRIPPLED;
-			$Current_Update_Time = time();
-			update_status_file($Current_Status);
 			return NET_CRIPPLED;
 		}
 	}
@@ -221,6 +216,7 @@ sub get_api_status
 	$Current_Status = quick_net_status();
 	return $Current_Status;
 }
+
 
 sub quick_net_status
 {
@@ -411,15 +407,6 @@ sub get_status_text
 }
 
 
-sub log_net_status
-{
-	# for debug purposes
-	my $status = shift;
-	popup_dialog($status) if (DEBUG > 2);
-	$ctx->log(debug => "Network status is " . get_status_text($status) );
-}
-
-
 ################	    Helper subroutines		################
 
 sub print_usage_message
@@ -590,11 +577,7 @@ sub update_status_file
 
 sub get_previous_status_from_file
 {
-	unless (-e STATUS_FILE) {
-		update_status_file(NET_UNPROTECTED);
-		return NET_UNPROTECTED;
-	}
-	open my $sf, "<", STATUS_FILE or return 1;
+	open my $sf, "<", STATUS_FILE or return NET_UNKNOWN;
 	my @lines = <$sf>;
 	close $sf;
 	return $lines[0];
@@ -1258,7 +1241,6 @@ sub detect_change
 	$ctx->log(debug => "Refreshing network status") if DEBUG > 0;
 
 	$Current_Status = quick_net_status();
-	log_net_status($Current_Status) if DEBUG > 0;
 	$ctx->log(debug => "\tprevious_status = " . get_status_text($Previous_Status) . " current_status = " . get_status_text($Current_Status) ) if DEBUG > 1;
 
 	my $tmp_previous = $Previous_Status;
@@ -1292,12 +1274,9 @@ sub detect_change
 	if ($Current_Status eq $tmp_previous) {
 		return(0);
 	} else {
-		$ctx->log(warn => "State changed from " . get_status_text($tmp_previous) . " to " . get_status_text($Current_Status) );
-		popup_dialog($Current_Status);
-		return(999) if ($tmp_previous == 999);
-		return(1) if ($Current_Status == NET_ERROR);
-		return(1) if ($Current_Status == NET_BROKEN);
+		$ctx->log(info => "State changed from " . get_status_text($tmp_previous) . " to " . get_status_text($Current_Status) );
 		update_status_file($Current_Status);
+		popup_dialog($Current_Status) if DEBUG > 2;
 	}
 }
 
@@ -1334,7 +1313,9 @@ sub run_once
 	# read API check URL from inifile to global variable
 	read_api_url_from_ini_file();
 
-	if ( !-e STATUS_FILE) {
+	# Enable monitor if this is the first time this software has been run since reboot
+	# Since the status file is written to a tmpfs, if it is missing, this is the first run
+	unless ( -e STATUS_FILE) {
 		unless ( -e INI_FILE ) {
 			$Monitor_Enabled = 0;
 			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
@@ -1377,7 +1358,6 @@ sub run_once
 		close VPN_INI;
 
 	} else { # status file exists
-		# assign variable from file
 		$Previous_Status = get_previous_status_from_file();
 
 		my ($monitor, $error) = read_ini_file('monitor');
