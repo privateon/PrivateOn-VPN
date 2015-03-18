@@ -23,8 +23,9 @@
 use strict;
 use warnings;
 use sigtrap qw(die normal-signals); 
-
+use feature 'state';
 use lib '/opt/PrivateOn-VPN/vpn-monitor/';
+
 use Fcntl qw(:flock);
 use File::Basename qw(dirname);
 use File::Path qw(make_path);
@@ -60,7 +61,7 @@ use constant {
 	INI_FILE      => '/etc/PrivateOn/vpn-default.ini',
 	SERVICE_NAME  => 'vpnmonitor',
 	VERSION       => '0.9',
-	DEBUG         => 2
+	DEBUG         => 3
 };
 
 use constant {
@@ -119,6 +120,14 @@ my %TCP_Server_Connections;     # Keep TCP server alive after initialization
 sub http_req_async
 {
 	my $url = shift;
+
+	my $counter;
+	if (DEBUG > 0) {
+		state $persistent_counter = 0;
+		$counter = ++$persistent_counter;
+		$ctx->log(info => "http_req_async " . (defined($counter) ? "request # $counter, " : "") . "requesting " . $url) if DEBUG > 2;
+	}
+
 	$Current_Status = NET_CONFIRMING;
 	$Current_Update_Time = time();
 	$Http_Request_Time = $Current_Update_Time;
@@ -127,16 +136,17 @@ sub http_req_async
 
 		if ( !defined($data) ) {
 			$Current_Status = NET_UNCONFIRMED;
-			$ctx->log(error => "http_req_async request error, Current_Status = NET_UNCONFIRMED");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 0;
-			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef');
-			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef');
+			$ctx->log(error => "http_req_async request error, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
+			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef') if DEBUG > 0;
+			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef') if DEBUG > 0;
 			$Current_Update_Time = time();
 			return;
 		} elsif ( (length $data == 0) || ($headers->{"content-length"} == 0) ) {
 			$Current_Status = NET_UNCONFIRMED;
-			$ctx->log(error => "http_req_async returned empty content, Current_Status = NET_UNCONFIRMED");
-			$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 0;
+			$ctx->log(error => "http_req_async returned empty content, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
+			$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 2;
 			$ctx->log(debug => "\tContent-length: " . (defined($headers->{'content-length'}) ? $headers->{'content-length'} : 'undef') . "\tType: " . ($headers->{'content-type'} || 'undef')) if DEBUG > 0;
 			$Current_Update_Time = time();
 			return;
@@ -156,10 +166,10 @@ sub http_req_async
 			$Current_Status = NET_PROTECTED; 
 		} else {
 			$Current_Status = NET_UNCONFIRMED;
-			$ctx->log(error => "http_req_async returned unparseable data, Current_Status = NET_UNCONFIRMED");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 0;
-			$data =~ s/\R//g if DEBUG > 1;
-			$ctx->log(debug => "http_req_async data=$data") if DEBUG > 1;
+			$ctx->log(error => "http_req_async returned unparseable data, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
+			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
+			$data =~ s/\R//g if DEBUG > 0;
+			$ctx->log(debug => "http_req_async data=$data") if DEBUG > 0;
 		}
 		$Current_Update_Time = time();
 	};
