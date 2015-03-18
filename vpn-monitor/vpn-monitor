@@ -38,7 +38,8 @@ use POSIX qw(geteuid);
 use Try::Tiny;
 use UI::Dialog::Backend::KDialog;
 
-use AnyEvent::Impl::POE;
+#use AnyEvent::Impl::POE;
+#use POE;
 use AnyEvent;
 use AnyEvent::Handle;
 use AnyEvent::Socket;
@@ -47,7 +48,6 @@ use AnyEvent::Fork;
 use AnyEvent::Fork::RPC;
 use AnyEvent::HTTP;
 use AnyEvent::CacheDNS ':register';
-use POE;
 
 use Data::Dumper;
 
@@ -101,16 +101,17 @@ my $Current_Task = "idle";      # stores the current forked task, idle if no tas
 my $Current_Status = 999;       # used to cache network status for get_monitor_state responses
 my $Previous_Status = 999;      # used to store status result of previous iteration for detecting change 
 my $Current_Update_Time = 0;    # used to store epoch time of last network status update for cache aging
-my $Http_Request_Time = 0;      # used to store start time of last asynchronous http request
+my $HTTP_Request_Time = 0;      # used to store start time of last asynchronous HTTP request
 my $Skip_Cleanup = 0;           # used to prevent cleanup when process aborted due to other instance running
 my $Url_For_Api_Check;          # URL for checking VPN-provider's VPN status API (set in run_once())
 
-my $cv = AnyEvent->condvar;     # Event loop object
+my $CV = AnyEvent->condvar;     # Event loop object
 my $ctx;                        # global AE logging context object
 my $Detect_Change_Timer;        # Timer for periodic network status check
 my $Api_Check_Timer;            # Timer for updating API status check before periodic network status check
-my $Lockfile_Handle;            # Keep exclusive lock alive until process exits
 my $Temporary_Disable_Timer;    # Timer for re-enabling monitor after GUI tasks
+my $Lockfile_Handle;            # Keep exclusive lock alive until process exits
+my $HTTP_Request_Handle;        # HTTP request handle for canceling previous request
 my $TCP_Server_Handle;          # TCP server handle
 my %TCP_Server_Connections;     # Keep TCP server alive after initialization
 
@@ -126,48 +127,54 @@ sub http_req_async
 	if (DEBUG > 0) {
 		state $persistent_counter = 0;
 		$counter = ++$persistent_counter;
-		$ctx->log(info => "http_req_async " . (defined($counter) ? "request # $counter, " : "") . "requesting " . $url) if DEBUG > 2;
+		$ctx->log(debug => "http_req_async sending request # " . $counter) if DEBUG > 2;
 	}
 
-	$Http_Request_Time = time();
-	http_get $url, timeout => API_CHECK_TIMEOUT, sub {
-		my ($data, $headers) = @_;
+	# cancel previous request
+	undef $HTTP_Request_Handle;
+	
+	$HTTP_Request_Time = time();
+	$HTTP_Request_Handle = http_request
+		GET => $url,
+		timeout => API_CHECK_TIMEOUT,
+		sub {
+			my ($data, $headers) = @_;
 
-		if ( !defined($data) ) {
-			$Current_Status = NET_UNCONFIRMED;
-			$ctx->log(error => "http_req_async request error, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
-			$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef') if DEBUG > 0;
-			$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef') if DEBUG > 0;
-			return;
-		} elsif ( (length $data == 0) || ($headers->{"content-length"} == 0) ) {
-			$Current_Status = NET_UNCONFIRMED;
-			$ctx->log(error => "http_req_async returned empty content, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
-			$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 2;
-			$ctx->log(debug => "\tContent-length: " . (defined($headers->{'content-length'}) ? $headers->{'content-length'} : 'undef') . "\tType: " . ($headers->{'content-type'} || 'undef')) if DEBUG > 0;
-			return;
-		}
+			if ( !defined($data) ) {
+				$Current_Status = NET_UNCONFIRMED;
+				$ctx->log(error => "http_req_async request error, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
+				$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
+				$ctx->log(debug => "\tHTTP Status: " . $headers->{Status} || 'undef') if DEBUG > 0;
+				$ctx->log(debug => "\tReason: " . $headers->{Reason} || 'undef') if DEBUG > 0;
+				return;
+			} elsif ( (length $data == 0) || ($headers->{"content-length"} == 0) ) {
+				$Current_Status = NET_UNCONFIRMED;
+				$ctx->log(error => "http_req_async returned empty content, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
+				$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
+				$ctx->log(debug => "\tHTTP Status: " . ($headers->{Status} || 'undef') . "\tReason: " . ($headers->{Reason} || 'undef')) if DEBUG > 2;
+				$ctx->log(debug => "\tContent-length: " . (defined($headers->{'content-length'}) ? $headers->{'content-length'} : 'undef') . "\tType: " . ($headers->{'content-type'} || 'undef')) if DEBUG > 0;
+				return;
+			}
 
-		if ($data =~ /<meta name="flag" content="1"\/>/g) {
-			$Current_Status = NET_CRIPPLED;
-			return;
-		}
+			if ($data =~ /<meta name="flag" content="1"\/>/g) {
+				$Current_Status = NET_CRIPPLED;
+				return;
+			}
 
-		my $reply = decode_json($data);
-		my $status = $reply->{'status'};
-		if ($status eq 'Unprotected') { 
-			$Current_Status = NET_NEGATIVE; 
-		} elsif ($status eq 'Protected') { 
-			$Current_Status = NET_PROTECTED; 
-		} else {
-			$Current_Status = NET_UNCONFIRMED;
-			$ctx->log(error => "http_req_async returned unparseable data, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
-			$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
-			$data =~ s/\R//g if DEBUG > 0;
-			$ctx->log(debug => "http_req_async data=$data") if DEBUG > 0;
-		}
-	};
+			my $reply = decode_json($data);
+			my $status = $reply->{'status'};
+			if ($status eq 'Unprotected') { 
+				$Current_Status = NET_NEGATIVE; 
+			} elsif ($status eq 'Protected') { 
+				$Current_Status = NET_PROTECTED; 
+			} else {
+				$Current_Status = NET_UNCONFIRMED;
+				$ctx->log(error => "http_req_async returned unparseable data, " . (defined($counter) ? "request # $counter, " : "") . "Current_Status = NET_UNCONFIRMED");
+				$ctx->log(debug => "\tPrevious_Status = " . get_status_text($Previous_Status) . "\tCurrent_Task = " . $Current_Task) if DEBUG > 2;
+				$data =~ s/\R//g if DEBUG > 0;
+				$ctx->log(debug => "http_req_async data=$data") if DEBUG > 0;
+			}
+		};
 
 	return $Current_Status;
 }
@@ -1274,7 +1281,7 @@ sub detect_change
 	if ($Current_Status eq $tmp_previous) {
 		return(0);
 	} else {
-		$ctx->log(info => "State changed from " . get_status_text($tmp_previous) . " to " . get_status_text($Current_Status) );
+		$ctx->log(info => "\tState changed from " . get_status_text($tmp_previous) . " to " . get_status_text($Current_Status) );
 		update_status_file($Current_Status);
 		popup_dialog($Current_Status) if DEBUG > 2;
 	}
@@ -1315,7 +1322,7 @@ sub run_once
 
 	# Enable monitor if this is the first time this software has been run since reboot
 	# Since the status file is written to a tmpfs, if it is missing, this is the first run
-	unless ( -e STATUS_FILE) {
+	unless ( -e STATUS_FILE ) {
 		unless ( -e INI_FILE ) {
 			$Monitor_Enabled = 0;
 			$ctx->log(info => "Ini file " . INI_FILE . " missing.");
@@ -1429,11 +1436,13 @@ tcp_server(
 			if ($buf eq "force-refresh") {
 				# force get_monitor_state to update Current_Status by time traveling to the age of disco
 				$Current_Update_Time = 0;
+				# force get-api-status to send new http request
+				$HTTP_Request_Time = 0;
 				$self->push_write("ok - forcing refresh on next get_monitor_state\n");
 
 			} elsif ($buf eq "get-api-status") {
 				# don't make new http request before previous has had time to arrive
-				if ($Http_Request_Time + API_CHECK_TIMEOUT < time()) {
+				if ($HTTP_Request_Time + API_CHECK_TIMEOUT < time()) {
 					$self->push_write(get_api_status() . "\n");
 				} else {
 					$Current_Status = quick_net_status();
@@ -1516,7 +1525,7 @@ $ctx->log(info => "Daemon is listening on " . IPC_HOST . ":" . IPC_PORT);
 
 ################		Main Loop		################
 
-$cv->recv;
+$CV->recv;
 
 
 ################		Clean up		################
