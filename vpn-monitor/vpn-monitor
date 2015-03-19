@@ -180,68 +180,34 @@ sub http_req_async
 }
 
 
-sub tun0_exists
-{
-	my $result = 0;
-	open(my $iph, "ip link list |") or do {
-		return $result;
-	};
-	while (<$iph>) {
-		if (/^\d+: (tun\d+):/) {
-			$result = $1;
-		}
-	}
-	close $iph;
-	return $result;
-}
-
-
 sub get_api_status 
 {
 	$Current_Update_Time = time();
 
-	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
-	unless (open ROUTE, '<', '/proc/net/route') {
-		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
-		$Current_Status = NET_BROKEN;
-		return NET_BROKEN;
+	my $default_route_status = get_route_status();
+	if ($default_route_status) {
+		$Current_Status = $default_route_status;
+		return $Current_Status;
 	}
-	while (<ROUTE>) {
-		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
-			close ROUTE;
-			$Current_Status = NET_CRIPPLED;
-			return NET_CRIPPLED;
-		}
-	}
-	close ROUTE;
 
 	if (tun0_exists() && $Url_For_Api_Check ne 'none') {
-		my $status = http_req_async($Url_For_Api_Check); # it will set $Current_Status
-		return $status;
+		# http_req_async subroutine has already changed Current_Status
+		return http_req_async($Url_For_Api_Check);
 	}
 
-	$Current_Status = quick_net_status();
+	$Current_Status = get_interface_operstate();
 	return $Current_Status;
 }
 
 
 sub quick_net_status
 {
-	my $net_status = NET_UNKNOWN;
 	$Current_Update_Time = time();
 
-	# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
-	unless (open ROUTE, '<', '/proc/net/route') {
-		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
-		return NET_BROKEN;
+	my $default_route_status = get_route_status();
+	if ($default_route_status) {
+		return $default_route_status;
 	}
-	while (<ROUTE>) {
-		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
-			close ROUTE;
-			return NET_CRIPPLED;
-		}
-	}
-	close ROUTE;
 
 	my $tun0_exists = tun0_exists();
 	unless (defined $tun0_exists) {
@@ -258,6 +224,62 @@ sub quick_net_status
 			return NET_PROTECTED;
 		}
 	}
+	
+	return get_interface_operstate();
+}
+
+
+sub get_route_status
+{
+	my $default_route_exists = 0;
+
+	unless (open ROUTE, '<', '/proc/net/route') {
+		$ctx->log(error => "Could not open /proc/net/route for reading.  Reason: " . $!);
+		return NET_BROKEN;
+	}
+
+	while (<ROUTE>) {
+		# return NET_CRIPPLED if default route is interface lo or 127.0.0.1
+		if ( (/^lo\s+00000000\s+/) || (/^\S+\s+00000000\s+0100007F\s+/i) ) {
+			close ROUTE;
+			return NET_CRIPPLED;
+		}
+		# check that a default route exists
+		if (/^\S+\s+00000000\s+/) {
+			$default_route_exists = 1;
+		}
+	}
+	close ROUTE;
+
+	unless ($default_route_exists) {
+		return NET_OFFLINE;
+	}
+
+	return 0;
+}
+
+
+sub tun0_exists
+{
+	my $result = 0;
+
+	open(my $iph, "ip link list |") or do {
+		return $result;
+	};
+	while (<$iph>) {
+		if (/^\d+: (tun\d+):/) {
+			$result = $1;
+		}
+	}
+	close $iph;
+
+	return $result;
+}
+
+
+sub get_interface_operstate
+{
+	my $net_status = NET_UNKNOWN;
 
 	my $sys_net_path = "/sys/class/net/";
 	my $net;
@@ -653,10 +675,12 @@ sub change_active_monitoring
 			cb => \&get_api_status,
 		);
 
-		$ctx->log(debug => "Monitor enabled, first check after 40 seconds") if DEBUG > 0;
+		$ctx->log(info => "Active monitoring enabled, first check after 40 seconds");
 	} else {
 		undef $Detect_Change_Timer;
 		undef $Api_Check_Timer;
+		
+		$ctx->log(info => "Active monitoring disabled");
 	}
 
 	# read and update ini
@@ -1386,8 +1410,8 @@ sub run_once
 	# write uuid from ini file to dispatcher file, if uuid is missing don't enable monitoring
 	if ( write_dispatcher() == 1 ) {
 		$Monitor_Enabled = 0;
-		$ctx->log(info => "Active monitoring disabled because ini file missing 'uuid'-key.");
 		change_active_monitoring(0);
+		$ctx->log(info => "\tbecause ini file missing 'uuid'-key.");
 		if ($uncripple_option) { spawn_undo_crippling(); };
 		return 1;
 	}
@@ -1537,6 +1561,7 @@ END {
 		# remove pid file
 		pf_unset( PID_FILE );
 		$ctx->log(info => "PrivateOn VPN-monitor daemon stopped.");
-		print("PrivateOn VPN-monitor daemon stopped.");		# print daemon stopped to systemd journal 
+		# print daemon stopped to systemd journal or foreground
+		print("\nPrivateOn vpn-monitor daemon stopped.\n");
 	}
 }
