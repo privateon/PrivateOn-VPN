@@ -39,7 +39,7 @@ use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections);
 use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState 
-		takeABreak resumeIdling removeDispatcher 
+		takeABreak resumeIdling removeDispatcher removeRoute
 		disableMonitor enableMonitor undoCrippling forceRefresh);
 #use QtCore4::debug qw(ambiguous);
 #use Data::Dumper;
@@ -1207,6 +1207,11 @@ sub fixConnection {
 
 	startTask();
 
+	my $remove_response = removeRoute();
+	if ($remove_response =~ /not ok/) {
+		$status_text .= "Detected wrong route but cannot remove it.\n";
+	}
+
 	# restart NetworkManager if not running
 	if ( system("/usr/sbin/service NetworkManager status >/dev/null 2>&1") ) {
 		system("/usr/sbin/service NetworkManager stop >/dev/null 2>&1");
@@ -1218,6 +1223,10 @@ sub fixConnection {
 			$status_text .= "NetworkManager restarted\n";
 		}
 	}
+
+	# restart network
+	system("/usr/sbin/service network restart");
+
 	setStatusText($status_text);
 	this->{turnoffButton}->setEnabled(0);
 

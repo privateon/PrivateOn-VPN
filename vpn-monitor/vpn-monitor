@@ -731,6 +731,84 @@ sub change_active_monitoring
 }
 
 
+sub remove_route
+# returns undef in case of error,
+# negative number if bad routes still exist,
+# positive number if bad routes were removed,
+# zero if there were no bad routes.
+{
+	open(my $fh, "/proc/net/route") or do {
+		$ctx->log(error => "Cannot open /proc/net/route: $!");
+		return -1;
+	};
+	chomp(my $firstline = <$fh>);
+	my @headers = split /\s+/, $firstline;
+
+	my @badroutes;
+	while (<$fh>) {
+		chomp;
+		next if /^\s*$/;
+		my @values = split /\s+/, $_;
+		my %line;
+		@line{@headers} = @values;
+
+		if ($line{Iface} !~ /^tun\d+/ && $line{Gateway} eq '00000000' && $line{Mask} eq 'FFFFFFFF') {
+			push @badroutes, \%line;
+		}
+	}
+	close $fh;
+
+	if (!scalar @badroutes) {
+		return 0;
+	}
+
+	my $error = 0;
+	foreach my $badroute (@badroutes) {
+		my $host = join('.', reverse map { hex($_); } ($badroute->{Destination} =~ /([0-9A-F][0-9A-F])/gi));
+		my $gw = join('.', reverse map { hex($_); } ($badroute->{Gateway} =~ /([0-9A-F][0-9A-F])/gi));
+		my $metric = $badroute->{Metric};
+		my $iface = $badroute->{Iface};
+		my $cmd = "route del -host '$host' gw '$gw' metric $metric dev $iface";
+		my $rc = system($cmd);
+		if ($rc != 0) {
+			$ctx->log(error => "Error running command: $cmd. Return code: $rc");
+			$error = 1;
+		}
+	}
+
+	if ($error) {
+		return undef;
+	}
+
+	# there should not be any bad routes here now - let's check
+	open(my $gh, "/proc/net/route") or do {
+		$ctx->log(error => "Cannot open /proc/net/route: $!");
+		return -1;
+	};
+	<$gh>; # skip first line
+
+	my @badroutes_left;
+	while (<$gh>) {
+		chomp;
+		next if /^\s*$/;
+		my @values = split /\s+/, $_;
+		my %line;
+		@line{@headers} = @values;
+
+		if ($line{Iface} !~ /^tun\d+/ && $line{Gateway} eq '00000000' && $line{Mask} eq 'FFFFFFFF') {
+			push @badroutes_left, \%line;
+		}
+	}
+	close $gh;
+
+	if (scalar @badroutes_left) {
+		return -(scalar @badroutes_left);
+	}
+
+	return scalar(@badroutes);
+}
+
+
 sub write_dispatcher 
 {
 	my ($uuid, $error) = read_ini_file('uuid');
@@ -1523,6 +1601,17 @@ tcp_server(
 			} elsif ($buf eq "monitor-state") {
 				$self->push_write(get_monitor_state() . "\n");
 
+			} elsif ($buf eq "remove-route") {
+				my $retval = remove_route();
+				if (!defined $retval) {
+					$self->push_write("not ok - see error log\n");
+				} elsif ($retval < 0) {
+					$self->push_write("not ok - " . (-$retval) . " bad route(s) still exist(s)\n");
+				} elsif ($retval > 0) {
+					$self->push_write("ok - removed $retval bad route(s)\n");
+				} else {
+					$self->push_write("ok - no bad routes detected\n");
+				}
 			} else {
 				$self->push_write("say what?\n");
 				$ctx->log(debug => "Unrecognized command: " . $buf) if DEBUG > 0;

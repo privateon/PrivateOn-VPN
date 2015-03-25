@@ -199,4 +199,12 @@ sub getMonitorState {
 }
 
 
+sub removeRoute {
+	my $response = sendBackendQuery("remove-route");
+	if ($response =~ /not ok/) {
+		print "\nError: could not remove bad route. Backend says: \"$response\"\n";
+	}
+	return $response;
+}
+
 1;
