@@ -21,7 +21,8 @@ use QtCore4::slots
     showMessage => [],
     iconActivated => ['QSystemTrayIcon::ActivationReason'],
     hideWindow => [],
-    messageClicked => [];
+    messageClicked => [],
+    showAbout => [];
 use File::Basename qw(dirname);
 use vpn_ipc qw(getMonitorState);
 
@@ -62,6 +63,12 @@ sub NEW
 	my $mainLayout = Qt::VBoxLayout();
 	$mainLayout->addWidget(this->{iconGroupBox});
 	this->setLayout($mainLayout);
+
+        this->{about} = Qt::MessageBox(this);
+        this->{about}->setWindowTitle(this->tr('About PrivateOn VPN'));
+        this->{about}->setText('<b>PrivateOn VPN</b><br>Version X.Y.Z');
+        this->{about}->setIconPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
+        this->{about}->addButton(this->tr('Close'), Qt::MessageBox::AcceptRole());
 
 	this->{iconComboBox}->setCurrentIndex(1);
 	this->{trayIcon}->show();
@@ -156,6 +163,11 @@ sub showMessage
 	setVisible(this->{show});
 }
 
+sub showAbout
+{
+	this->{about}->show();
+}
+
 
 sub hideWindow
 {
@@ -229,6 +241,9 @@ sub createActions
 	this->{maximizeAction} = Qt::Action(this->tr('&Restore'), this);
 	this->connect(this->{maximizeAction}, SIGNAL 'triggered()', this, SLOT 'showMessage()');
 
+	this->{aboutAction} = Qt::Action(this->tr('&About'), this);
+	this->connect(this->{aboutAction}, SIGNAL 'triggered()', this, SLOT 'showAbout()');
+
 	this->{quitAction} = Qt::Action(this->tr('&Quit'), this);
 	this->connect(this->{quitAction}, SIGNAL 'triggered()', qApp, SLOT 'quit()');
 }
@@ -239,6 +254,7 @@ sub createTrayIcon
 	this->{trayIconMenu} = Qt::Menu(this);
 	this->{trayIconMenu}->addAction(this->{minimizeAction});
 	this->{trayIconMenu}->addAction(this->{maximizeAction});
+	this->{trayIconMenu}->addAction(this->{aboutAction});
 	this->{trayIconMenu}->addSeparator();
 	this->{trayIconMenu}->addAction(this->{quitAction});
 
