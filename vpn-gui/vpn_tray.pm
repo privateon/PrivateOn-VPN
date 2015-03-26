@@ -44,6 +44,7 @@ sub NEW
 	$class->SUPER::NEW();
 	this->{MainWindow} = $window;
 	this->{show} = 0;
+	this->findIconPath();
 	this->createIconGroupBox();
 
 	my $internalTimer = Qt::Timer(this);  # create internal timer
@@ -64,11 +65,24 @@ sub NEW
 	$mainLayout->addWidget(this->{iconGroupBox});
 	this->setLayout($mainLayout);
 
-        this->{about} = Qt::MessageBox(this);
-        this->{about}->setWindowTitle(this->tr('About PrivateOn VPN'));
-        this->{about}->setText('<b>PrivateOn VPN</b><br>Version X.Y.Z');
-        this->{about}->setIconPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
-        this->{about}->addButton(this->tr('Close'), Qt::MessageBox::AcceptRole());
+	# define about/version window
+	this->{about} = Qt::MessageBox(this);
+	this->{about}->setWindowModality(Qt::NonModal());
+	this->{about}->setWindowTitle(this->tr('About PrivateOn VPN'));
+	this->{about}->setText('PrivateOn VPN<br>&nbsp;&nbsp;Version 0.9');
+this->{about}->setDetailedText('             PrivateOn VPN  -  Privacy Software
+                 Version 0.9  (GitHub Release)
+      
+        VPN Manager for configuring, monitoring 
+            and controlling VPN connections.
+
+                    Copyright (C) 2014-2015
+    PrivateOn / Tietosuojakone Oy, Helsinki, Finland
+ All rights reserved. Use is subject to license terms.
+                  License:  Artistic License 2.0
+');
+	this->{about}->setIconPixmap(Qt::Pixmap( this->{iconPath} . '/PrivateOn-logo.png' ));
+	this->{about}->addButton(this->tr('Close'), Qt::MessageBox::AcceptRole());
 
 	this->{iconComboBox}->setCurrentIndex(1);
 	this->{trayIcon}->show();
@@ -178,43 +192,48 @@ sub hideWindow
 }
 
 
+sub findIconPath
+{
+	# find path to images directory, resolve symlink if necessary
+	if ( -l $0 ) {
+		this->{iconPath} = dirname(readlink($0)) . '/images';
+	} else {
+		this->{iconPath} = dirname($0) . '/images';
+	}
+}
+
+
 sub createIconGroupBox
 {
 	this->{iconGroupBox} = Qt::GroupBox(this->tr('Tray Icon'));
 	this->{iconLabel} = Qt::Label('Icon:');
 	this->{iconComboBox} = Qt::ComboBox();
 
-	# find path to images directory, resolve symlink if necessary
-	my $images_path;
-	if ( -l $0 ) {
-		$images_path = dirname(readlink($0)) . '/images';
-	} else {
-		$images_path = dirname($0) . '/images';
-	}
+
 
 	# icon for monitor disabled
 	this->{iconComboBox}->insertItem( UNPROTECTED , 
-	   Qt::Icon($images_path . '/tray-unprotected-ignore.png'), this->tr('Unprotected'));
+	   Qt::Icon(this->{iconPath} . '/tray-unprotected-ignore.png'), this->tr('Unprotected'));
 	this->{iconComboBox}->insertItem( PROTECTED , 
-	   Qt::Icon($images_path . '/tray-protected-ignore.png'), this->tr('Protected'));
+	   Qt::Icon(this->{iconPath} . '/tray-protected-ignore.png'), this->tr('Protected'));
 	this->{iconComboBox}->insertItem( OFFLINE , 
-	   Qt::Icon($images_path . '/tray-broken-ignore.png'), this->tr('Offline'));
+	   Qt::Icon(this->{iconPath} . '/tray-broken-ignore.png'), this->tr('Offline'));
 	this->{iconComboBox}->insertItem( CRIPPLED , 
-	   Qt::Icon($images_path . '/tray-crippled-guard.png'), this->tr('Safe-Mode'));
+	   Qt::Icon(this->{iconPath} . '/tray-crippled-guard.png'), this->tr('Safe-Mode'));
 	this->{iconComboBox}->insertItem( REFRESH , 
-	   Qt::Icon($images_path . '/tray-refresh-guard.png'), this->tr('Refreshing'));
+	   Qt::Icon(this->{iconPath} . '/tray-refresh-guard.png'), this->tr('Refreshing'));
 
 	# icon for monitor enabled
 	this->{iconComboBox}->insertItem( UNPROTECTED+GUARD , 
-	   Qt::Icon($images_path . '/tray-unprotected-guard.png'), this->tr('Unprotected'));
+	   Qt::Icon(this->{iconPath} . '/tray-unprotected-guard.png'), this->tr('Unprotected'));
 	this->{iconComboBox}->insertItem( PROTECTED+GUARD , 
-	   Qt::Icon($images_path . '/tray-protected-guard.png'), this->tr('Protected'));
+	   Qt::Icon(this->{iconPath} . '/tray-protected-guard.png'), this->tr('Protected'));
 	this->{iconComboBox}->insertItem( OFFLINE+GUARD , 
-	   Qt::Icon($images_path . '/tray-broken-guard.png'), this->tr('Offline'));
+	   Qt::Icon(this->{iconPath} . '/tray-broken-guard.png'), this->tr('Offline'));
 	this->{iconComboBox}->insertItem( CRIPPLED+GUARD , 
-	   Qt::Icon($images_path . '/tray-crippled-guard.png'), this->tr('Safe-Mode'));
+	   Qt::Icon(this->{iconPath} . '/tray-crippled-guard.png'), this->tr('Safe-Mode'));
 	this->{iconComboBox}->insertItem( REFRESH+GUARD , 
-	   Qt::Icon($images_path . '/tray-refresh-guard.png'), this->tr('Refreshing'));
+	   Qt::Icon(this->{iconPath} . '/tray-refresh-guard.png'), this->tr('Refreshing'));
 
 	# check that we got all icons, 5 basic states * 2 Enabled/disabled
 	if ( this->{iconComboBox}->count() < 10 ) {
