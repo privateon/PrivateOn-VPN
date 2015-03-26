@@ -65,7 +65,7 @@ sub NEW
 	$mainLayout->addWidget(this->{iconGroupBox});
 	this->setLayout($mainLayout);
 
-	# define about/version window
+	# define about-window
 	this->{about} = Qt::MessageBox(this);
 	this->{about}->setWindowModality(Qt::NonModal());
 	this->{about}->setWindowTitle(this->tr('About PrivateOn VPN'));
@@ -74,11 +74,11 @@ this->{about}->setDetailedText('             PrivateOn VPN  -  Privacy Software
                  Version 0.9  (GitHub Release)
       
         VPN Manager for configuring, monitoring 
-            and controlling VPN connections.
+               and controlling VPN connections.
 
                     Copyright (C) 2014-2015
     PrivateOn / Tietosuojakone Oy, Helsinki, Finland
- All rights reserved. Use is subject to license terms.
+  All rights reserved. Use is subject to license terms.
                   License:  Artistic License 2.0
 ');
 	this->{about}->setIconPixmap(Qt::Pixmap( this->{iconPath} . '/PrivateOn-logo.png' ));
@@ -177,9 +177,16 @@ sub showMessage
 	setVisible(this->{show});
 }
 
+
 sub showAbout
 {
 	this->{about}->show();
+	# move about-window to the center of the screen
+	my $screen_width = Qt::Application::desktop()->availableGeometry()->width();
+	my $screen_height = Qt::Application::desktop()->availableGeometry()->height();
+	my $about_width = this->{about}->width();
+	my $about_height = this->{about}->height();
+	this->{about}->move( ($screen_width-$about_width)/2 , ($screen_height-$about_height)/2 );
 }
 
 
@@ -195,11 +202,13 @@ sub hideWindow
 sub findIconPath
 {
 	# find path to images directory, resolve symlink if necessary
+	my $images_path;
 	if ( -l $0 ) {
-		this->{iconPath} = dirname(readlink($0)) . '/images';
+		$images_path = dirname(readlink($0)) . '/images';
 	} else {
-		this->{iconPath} = dirname($0) . '/images';
+		$images_path = dirname($0) . '/images';
 	}
+	this->{iconPath} = $images_path;
 }
 
 
