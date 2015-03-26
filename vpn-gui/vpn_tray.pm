@@ -202,13 +202,11 @@ sub hideWindow
 sub findIconPath
 {
 	# find path to images directory, resolve symlink if necessary
-	my $images_path;
 	if ( -l $0 ) {
-		$images_path = dirname(readlink($0)) . '/images';
+		this->{iconPath} = dirname(readlink($0)) . '/images';
 	} else {
-		$images_path = dirname($0) . '/images';
+		this->{iconPath} = dirname($0) . '/images';
 	}
-	this->{iconPath} = $images_path;
 }
 
 
