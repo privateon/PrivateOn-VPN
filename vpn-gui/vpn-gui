@@ -54,6 +54,7 @@ foreach (@ARGV) {
 sub main
 {
 	my $app = Qt::Application(\@ARGV);
+        $app->setQuitOnLastWindowClosed(0);
 	my $window = vpn_window();
 	my $tray = vpn_tray($window);
 
