@@ -301,7 +301,6 @@ sub addConnections
 sub backupConnections {
 	my @pathes = ('/etc/openvpn', '/etc/NetworkManger/system-connections');
 	for my $path (@pathes) {
-		my $path = shift;
 		my $backup_path = $path . '/backup';
 		if (-d $backup_path) {
 			for my $file (glob($backup_path . '/*')) {
