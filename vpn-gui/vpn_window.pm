@@ -37,7 +37,7 @@ use IO::Pty::Easy;
 use Net::DBus qw(:typing);
 use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
-use vpn_install qw(addConnections);
+use vpn_install qw(addConnections backupConnections restoreConnections);
 use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState 
 		takeABreak resumeIdling removeDispatcher removeRoute
 		disableMonitor enableMonitor undoCrippling forceRefresh);
@@ -662,33 +662,19 @@ sub setUserInfo {
 	
 	my $ac_rc; # addConnections() return code
 	if ($ok) {
+		backupConnections();
 		$ac_rc = addConnections($username, $password);
-		if ($ac_rc == 0) {
-			while (</etc/openvpn/*.ovpn>) {
-				copy($_,$_ . '.bak');
-				# TODO: what do we do after copying?
-			}
-		} else {
-		my $original_file;
 		if ($ac_rc == 1) {
-			while (</etc/openvpn/*.bak>) {
-				$original_file = substr($_, 0, -4); # remove trailing .bak
-				if (!(-e $original_file)) {
-					# copy only if file doesn't already exist
-					rename($_, $original_file);
-				}
-			}
+			restoreConnections('missing');
+			$status_text = "Note: Can not create all connections for you due to partial failure\n";
+		} elsif ($ac_rc == 2) {
+			restoreConnections('all');
+			$status_text = "Note: Can not create all connections for you due to complete failure\n";
 		}
-		elsif ($ac_rc == 2) {
-			while (</etc/openvpn/*.bak>) {
-				$original_file = substr($_, 0, -4); # remove trailing .bak
-				rename($_, $original_file);
-			}
-		}
-		$status_text = "Note: Can not create all connections for you\n";
-		setStatusText($status_text);
-		this->{userpassButton}->setEnabled(1);
-		return $userInfo{code};
+		if ($ac_rc != 0) {
+			setStatusText($status_text);
+			this->{userpassButton}->setEnabled(1);
+			return $userInfo{code};
 		}
 	}
 

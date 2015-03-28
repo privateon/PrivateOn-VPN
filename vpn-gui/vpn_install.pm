@@ -11,7 +11,8 @@ package vpn_install;
 
 use strict;
 use warnings;
-use File::Basename qw(dirname);
+use File::Copy qw(copy);
+use File::Basename qw(basename dirname);
 use File::Path qw(make_path);
 use Getopt::Long;
 
@@ -295,6 +296,48 @@ sub addConnections
 	} 
 
 	return $return_code;
+}
+
+sub backupConnections {
+	my @pathes = ('/etc/openvpn', '/etc/NetworkManger/system-connections');
+	for my $path (@pathes) {
+		my $path = shift;
+		my $backup_path = $path . '/backup';
+		if (-d $backup_path) {
+			for my $file (glob($backup_path . '/*')) {
+				unlink($file) if -e $file;
+			}
+		} else {
+			make_path($backup_path);
+		}
+		for my $file (glob($path . '/*')) {
+			my $filename = basename($file);
+			if ($filename =~ /^(double|tor|vpn)/i) {
+				my $bakfile = $backup_path . '/' . $filename . '.bak';
+				copy($file, $bakfile);
+			}
+		}
+	}
+}
+
+sub restoreConnections {
+	my type = shift; # $type can be set to "all" or "missing"
+	my @pathes = ('/etc/openvpn', '/etc/NetworkManger/system-connections');
+	for my $path (@pathes) {
+		my $backup_path = $path . '/backup';
+		for my $bakfile (glob($backup_path . '/*.bak')) {
+			my $bakfilename = basename($bakfile);
+			my $filename = substr($bakfilename, 0, -4); # remove trailing .bak
+			if ($filename =~ /^(double|tor|vpn)/i) {
+				my $file = $path . '/' . $filename;
+				if (-e $file) {
+					next if $type eq "missing";
+					unlink($file);
+				}
+				copy($bakfile, $file);
+			}
+		}
+	}
 }
 
 1;
