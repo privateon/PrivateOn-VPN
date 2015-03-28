@@ -299,7 +299,7 @@ sub addConnections
 }
 
 sub backupConnections {
-	my @pathes = ('/etc/openvpn', '/etc/NetworkManger/system-connections');
+	my @pathes = ('/etc/openvpn', '/etc/NetworkManager/system-connections');
 	for my $path (@pathes) {
 		my $backup_path = $path . '/backup';
 		if (-d $backup_path) {
@@ -321,7 +321,7 @@ sub backupConnections {
 
 sub restoreConnections {
 	my $type = shift; # $type can be set to "all" or "missing"
-	my @pathes = ('/etc/openvpn', '/etc/NetworkManger/system-connections');
+	my @pathes = ('/etc/openvpn', '/etc/NetworkManager/system-connections');
 	for my $path (@pathes) {
 		my $backup_path = $path . '/backup';
 		for my $bakfile (glob($backup_path . '/*.bak')) {
