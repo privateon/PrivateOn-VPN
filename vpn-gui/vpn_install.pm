@@ -311,7 +311,7 @@ sub backupConnections {
 		}
 		for my $file (glob($path . '/*')) {
 			my $filename = basename($file);
-			if ($filename =~ /^(double|tor|vpn)/i) {
+			if ($filename =~ /^(double|tor|vpn)/i && $filename !~ /(\.bak)$/i) {
 				my $bakfile = $backup_path . '/' . $filename . '.bak';
 				copy($file, $bakfile);
 			}
