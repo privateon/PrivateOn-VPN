@@ -320,7 +320,7 @@ sub backupConnections {
 }
 
 sub restoreConnections {
-	my type = shift; # $type can be set to "all" or "missing"
+	my $type = shift; # $type can be set to "all" or "missing"
 	my @pathes = ('/etc/openvpn', '/etc/NetworkManger/system-connections');
 	for my $path (@pathes) {
 		my $backup_path = $path . '/backup';
