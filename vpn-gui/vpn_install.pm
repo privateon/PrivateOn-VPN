@@ -57,24 +57,26 @@ sub addOneConnection
 	my ($configfile, $kind, $ccode, $comment, $type, $username, $password) = @_;
 	my $return_code = 0;
 	my $sysconnections = "/etc/NetworkManager/system-connections/";
+	my $backup_path = $sysconnections . 'backup/';
 
 	# Generate UUID
 	my $uuid = `/usr/bin/uuidgen`;
 	$uuid =~ s/\n$//;
 
 	# Reuse old UUID if found
-	if (-e $sysconnections."$kind-$ccode-$comment-$type") {
-			open IN, $sysconnections."$kind-$ccode-$comment-$type" or $return_code = 1;
+	if (-e $backup_path . "$kind-$ccode-$comment-$type" . ".bak") {
+		if (open IN, $backup_path . "$kind-$ccode-$comment-$type" . ".bak") {
 			while (<IN>) {
 				if (/^uuid=(\S+)/) {
 					$uuid = $1;
-					print STDERR "     Reusing UUID $uuid\n" if DEBUG > 0;
+					print STDERR "\tReusing UUID $uuid\n" if DEBUG > 0;
 					last;
 				} else {
 					next;
 				}
 			}
 			close IN;
+		}
 	}
 
 	# Read openVPN file
