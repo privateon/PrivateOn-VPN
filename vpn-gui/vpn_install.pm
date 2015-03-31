@@ -11,7 +11,7 @@ package vpn_install;
 
 use strict;
 use warnings;
-use File::Copy qw(copy);
+use File::Copy qw(copy move);
 use File::Basename qw(basename dirname);
 use File::Path qw(make_path);
 use Getopt::Long;
@@ -271,7 +271,7 @@ sub addConnections
 		return 2
 	} 
 	system("/usr/bin/mkdir -p /etc/ca-certificates/");
-	
+
 	my $vpn_count = 0;
 	foreach my $file (@$filelist) {
 		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
@@ -293,31 +293,29 @@ sub addConnections
 		print STDERR "No openVPN files found with the correct name scheme.\n" if DEBUG > 0;
 		print STDERR "Check filenames in directory " . TMP_PATH . "\n" if DEBUG > 0;
 		return 2
-	} 
+	}
 
 	return $return_code;
 }
+
 
 sub backupConnections {
 	my @pathes = ('/etc/openvpn', '/etc/NetworkManager/system-connections');
 	for my $path (@pathes) {
 		my $backup_path = $path . '/backup';
-		if (-d $backup_path) {
-			for my $file (glob($backup_path . '/*')) {
-				unlink($file) if -e $file;
-			}
-		} else {
+		unless (-d $backup_path) {
 			make_path($backup_path);
 		}
 		for my $file (glob($path . '/*')) {
 			my $filename = basename($file);
 			if ($filename =~ /^(double|tor|vpn)/i && $filename !~ /(\.bak)$/i) {
 				my $bakfile = $backup_path . '/' . $filename . '.bak';
-				copy($file, $bakfile);
+				move($file, $bakfile);
 			}
 		}
 	}
 }
+
 
 sub restoreConnections {
 	my $type = shift; # $type can be set to "all" or "missing"
