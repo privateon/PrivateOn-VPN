@@ -3,8 +3,8 @@
 #
 # PrivateOn-VPN -- Because privacy matters.
 #
-# Authors: Maksim A. Boyko <maksim.a.boyko@gmail.com>,
-#          Kimmo R. M. Hovi <kimmo@fairwarning.fi>
+# Authors: Mikko Rautiainen <info@tietosuojakone.fi>,
+#          Maksim A. Boyko <maksim.a.boyko@gmail.com>
 #
 # Copyright (C) 2015  PrivateOn / Tietosuojakone Oy, Helsinki, Finland
 # All rights reserved. Use is subject to license terms.
@@ -19,7 +19,6 @@ License:        Artistic-2.0
 Group:          Productivity/Networking/Security
 Url:            http://www.privateon.net
 Source:         privateon-vpn-%{version}.tar.gz
-Distribution:   __DISTRIBUTION__
 BuildArch:      noarch
 BuildRequires:  systemd
 BuildRequires:  systemd-rpm-macros
@@ -138,10 +137,9 @@ exit 0
 /usr/lib/tmpfiles.d/PrivateOn.conf
 /usr/share/applications/VPN.desktop
 %_unitdir/vpnmonitor.service
-%_mandir/man8/vpn_*.gz
+%_mandir/man8/*.gz
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/vpn-gui
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/*.sh
-%attr(0755,root,root) /opt/PrivateOn-VPN/vpn-gui/*.pl
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/*.sh
 %attr(0755,root,root) /opt/PrivateOn-VPN/vpn-monitor/*.pl
