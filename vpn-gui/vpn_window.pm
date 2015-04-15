@@ -120,7 +120,8 @@ sub NEW {
 	$frameLayout->setStyleSheet("QFrame{background-color: " . $systemBackgroundColor . "; border-radius: 5px}");
 
 	my $image = Qt::Label();
-	$image->setPixmap(Qt::Pixmap(dirname($0).'/images/PrivateOn-logo.png'));
+	this->findIconPath();
+	$image->setPixmap(Qt::Pixmap(this->{iconPath} . 'PrivateOn-logo.png'));
 
 	this->{turnoffButton} = Qt::PushButton(this->tr('Turn off'));
 	this->{refreshButton} = Qt::PushButton(this->tr('Refresh'));
@@ -314,6 +315,17 @@ sub getVpnConnection {
 
 sub isVpnActive {
 	return </sys/devices/virtual/net/tun*> ? 1 : 0;
+}
+
+
+sub findIconPath
+{
+	# find path to images directory, resolve symlink if necessary
+	if ( -l $0 ) {
+		this->{iconPath} = dirname(readlink($0)) . '/images/';
+	} else {
+		this->{iconPath} = dirname($0) . '/images/';
+	}
 }
 
 
