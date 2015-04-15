@@ -28,7 +28,7 @@ BuildRequires:  logrotate
 BuildRequires:  sudo
 Requires:       perl
 Requires:       perl-qt4
-Requires:       perl-POE
+#Requires:       perl-POE
 Requires:       perl-AnyEvent
 Requires:       perl-HTTP-Lite
 Requires:       perl-UI-Dialog
@@ -80,9 +80,9 @@ mkdir -p /etc/PrivateOn
 mkdir -p --mode=755 /var/run/PrivateOn
 cd /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/
 for i in $(seq 400 415) ; do
-    [ ! -L  err${i}.html ] && ln -s ../index.html err${i}.html
+    [ ! -L  err${i}.html ] && ln -sf ../index.html err${i}.html
 done
-[ ! -L  /usr/sbin/rcvpnmonitor ] && ln -s /usr/sbin/service /usr/sbin/rcvpnmonitor
+[ ! -L  /usr/sbin/rcvpnmonitor ] && ln -sf /usr/sbin/service /usr/sbin/rcvpnmonitor
 if which monit &>/dev/null ; then
     if [ -f /etc/monitrc ] ; then
        if [ -n "$(grep 'include.*/etc/monit.d/' /etc/monitrc | grep '^#')" ] ; then
@@ -94,6 +94,8 @@ if which monit &>/dev/null ; then
         cp -f /opt/PrivateOn-VPN/monitrc /etc/monitrc
     fi
 fi
+ln -sf /opt/PrivateOn-VPN/vpn-gui/vpn-gui /usr/bin/vpn-gui
+ln -sf /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor /usr/bin/vpn-monitor
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/PrivateOn.conf >/dev/null 2>&1 || :
 systemctl daemon-reload >/dev/null 2>&1 || :
 systemctl enable vpnmonitor.service >/dev/null 2>&1 || :
@@ -111,6 +113,8 @@ if [ $1 -eq 0 ] ; then
     rm -f /usr/sbin/rcvpnmonitor
     rm -f /opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/*.html
     rm -f /etc/ld.so.conf.d/PrivateOn
+    rm -f /usr/bin/vpn-gui
+    rm -f /usr/bin/vpn-monitor
 fi
 
 exit 0
