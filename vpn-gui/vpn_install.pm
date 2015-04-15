@@ -29,7 +29,7 @@ use constant {
 	URL_FILE     => "Check-VPN-status-API.url",
 	TMP_PATH     => "/tmp/vpn_install/",
 	CUSTOMIZE    => 0,
-	DEBUG        => 1
+	DEBUG        => 0
 };
 
 

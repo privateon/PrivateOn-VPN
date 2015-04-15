@@ -19,7 +19,7 @@ use AnyEvent::Log;
 use constant {
 	LOG_FILE      => "/var/log/PrivateOn.log",
 	VERSION       => "0.9",
-	DEBUG         => 2
+	DEBUG         => 1
 };
 
 

@@ -25,7 +25,7 @@ sub import{
 
 use constant {
 	OPENVPN_DIR	=> "/etc/openvpn/",
-	DEBUG		=> 1
+	DEBUG		=> 0
 };
 
 

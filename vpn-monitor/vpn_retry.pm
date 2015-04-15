@@ -20,7 +20,7 @@ use constant {
 	LOG_FILE      => "/var/log/PrivateOn.log",
 	INI_FILE      => "/etc/PrivateOn/vpn-default.ini",
 	VERSION       => "0.9",
-	DEBUG         => 2
+	DEBUG         => 1
 };
 
 use constant {

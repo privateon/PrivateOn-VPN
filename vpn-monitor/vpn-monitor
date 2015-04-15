@@ -61,7 +61,7 @@ use constant {
 	INI_FILE      => '/etc/PrivateOn/vpn-default.ini',
 	SERVICE_NAME  => 'vpnmonitor',
 	VERSION       => '0.9',
-	DEBUG         => 3
+	DEBUG         => 1
 };
 
 use constant {
