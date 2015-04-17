@@ -1,4 +1,9 @@
 -----------------------------------------------------------------
+Fri Apr 17 17:41:09 UTC 2015 - info@tietosuojakone.fi
+
+- perl-AnyEvent-CacheDNS dependency
+
+-----------------------------------------------------------------
 Wed Apr 15 20:49:10 UTC 2015 - info@tietosuojakone.fi
 
-- First RPM pre-release.
+- First RPM pre-release

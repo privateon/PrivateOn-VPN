@@ -1,0 +1,11 @@
+--- ./AnyEvent-CacheDNS-0.08/t/dns.t	2013-07-08 19:53:53.000000000 +0300
++++ ./AnyEvent-CacheDNS-0.08/t/dns.t	2015-04-17 20:41:09.964337292 +0300
+@@ -3,7 +3,7 @@
+ use strict;
+ use warnings;
+ 
+-use Test::More tests => 11;
++use Test::More tests => 9;
+ 
+ use AnyEvent;
+ use AnyEvent::CacheDNS ':register';
