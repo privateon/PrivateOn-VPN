@@ -215,4 +215,8 @@ sub writeDispatcher {
 	return $response;
 }
 
+sub rereadConfig {
+	sendBackendQuery("reread-config");
+}
+
 1;

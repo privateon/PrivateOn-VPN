@@ -41,7 +41,7 @@ use vpn_install qw(addConnections backupConnections restoreConnections);
 use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState 
 		takeABreak resumeIdling removeDispatcher removeRoute
 		disableMonitor enableMonitor undoCrippling forceRefresh
-		writeDispatcher);
+		writeDispatcher rereadConfig);
 #use QtCore4::debug qw(ambiguous);
 #use Data::Dumper;
 
@@ -1028,6 +1028,9 @@ sub setDefaultVpn {
 		setStatusText($status_text);
 		return(1);
 	}
+
+	# since we changed the ini file, ask to reread config
+	rereadConfig();
 
 	return 0;
 }

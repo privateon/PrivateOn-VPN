@@ -1555,6 +1555,9 @@ tcp_server(
 				$Current_Status = quick_net_status();
 				$self->push_write($Current_Status . "\n");
 
+			} elsif ($buf eq "reread-config") {
+				my $result = read_api_url_from_ini_file();
+				$self->push_write($result == 0 ? "ok\n" : "not ok - returned $result\n");
 			} elsif ($buf eq "write-dispatcher") {
 				if (write_dispatcher() == 0) {
 					$self->push_write("ok - dispatch file written\n");
