@@ -19,6 +19,7 @@ use AnyEvent::Log;
 use constant {
 	LOG_FILE      => "/var/log/PrivateOn.log",
 	INI_FILE      => "/etc/PrivateOn/vpn-default.ini",
+	DISPATCH_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
 	VERSION       => "0.9",
 	DEBUG         => 1
 };
@@ -128,7 +129,7 @@ sub retry_vpn
 		my $fh;
 		unless (open $fh, '>>', $filename) {
 			$ctx->log(error => "Could not create " . $filename . ": " . $! ." (vpn_retry child)");
-			system("/usr/bin/rm -f /etc/NetworkManager/dispatcher.d/vpn-up");
+			unlink(DISPATCH_FILE);
 			system("/bin/pkill -9 openvpn");
 			system("/sbin/service network restart");
 			sleep 10;
@@ -150,7 +151,7 @@ sub retry_vpn
 	if (quick_net_status($ctx) == NET_PROTECTED) { return 0; }
 
 	# clear network and restart VPN
-	system("/usr/bin/rm -f /etc/NetworkManager/dispatcher.d/vpn-up");
+	unlink(DISPATCH_FILE);
 	system("/bin/pkill -9 openvpn");
 	system("service network restart");
 	sleep 5;

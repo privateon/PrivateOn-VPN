@@ -39,9 +39,9 @@ use Try::Tiny;
 use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections backupConnections restoreConnections);
 use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState 
-		takeABreak resumeIdling removeDispatcher removeRoute
-		disableMonitor enableMonitor undoCrippling forceRefresh
-		writeDispatcher rereadConfig);
+		takeABreak resumeIdling forceRefresh undoCrippling
+		removeDispatcher writeDispatcher removeRoute rereadConfig
+		disableMonitor enableMonitor); 
 #use QtCore4::debug qw(ambiguous);
 #use Data::Dumper;
 
@@ -674,7 +674,7 @@ sub setUserInfo {
 		this->{userpassButton}->setEnabled(1);
 		return 1;
 	}
-	
+
 	my $ac_rc; # addConnections() return code
 	if ($ok) {
 		backupConnections();
@@ -686,6 +686,10 @@ sub setUserInfo {
 			restoreConnections('all');
 			$status_text = "Note: Can not create all connections for you due to complete failure\n";
 		}
+
+		# since we changed the ini file, ask monitor to reread config
+		rereadConfig();
+
 		if ($ac_rc != 0) {
 			setStatusText($status_text);
 			this->{userpassButton}->setEnabled(1);
@@ -908,18 +912,20 @@ sub updateDefaultVpnResume {
 	}
 	print "ccode = $ccode\tstype = $stype\n" if DEBUG > 0;
 	my $return_code = setDefaultVpn($configfile, $ccode, $comment, $stype, $vpntype);
+	my $status = this->{statusOutput};
+	$status_text = $status->toPlainText();
 	if ($return_code == 1) {
-		$status_text = "There are no VPN connections!\n";
-		$status_text .="Please click 'Servers'\n"; 
-		$status_text .="to set your username/password\n"; 
+		$status_text .= "\nThere are no VPN connections!\n";
+		$status_text .= "Please click 'Servers'\n"; 
+		$status_text .= "to set your username/password\n"; 
 		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
 	} elsif ($return_code !=0) {
-		$status_text = "Unexcepted Error.\n";
+		$status_text .= "\nUnexcepted Error.\n";
 		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
 	}else {
-		$status_text = "The VPN connection will be activated,\n";
+		$status_text .= "\nThe VPN connection will be activated,\n";
 		$status_text .= "Please hold on.\n";
 		setStatusText($status_text);
 		this->{internalTimer}->start(5*1000);
@@ -999,9 +1005,9 @@ sub setDefaultVpn {
 			$status_text = "Deleted old ini file.\n";
 		}
 		print STDERR "Creating new ini file " . INI_FILE . "\n";
-		$status_text = "Creating new ini file '" . INI_FILE . "'\n";
+		$status_text .= "Creating new ini file '" . INI_FILE . "'\n";
 		setStatusText($status_text);
-		
+
 		# make directory in case it is missing
 		my $config_path = dirname(INI_FILE);
 		unless ( -d $config_path ) {
@@ -1011,7 +1017,7 @@ sub setDefaultVpn {
 
 	# write ini file
 	unless (open $vpn_ini, ">", INI_FILE) {
-		my $status_text = "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";
+		my $status_text .= "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";
 		setStatusText($status_text);
 		return(1);
 	}
@@ -1026,13 +1032,9 @@ sub setDefaultVpn {
 	### setup dispatcher file
 	my $result = writeDispatcher();
 	if ($result =~ /not ok/) {
-		my $status_text = "Could not write dispatcher file. " . $result . "\n";
+		my $status_text .= "Could not write dispatcher file. " . $result . "\n";
 		setStatusText($status_text);
-		return(1);
 	}
-
-	# since we changed the ini file, ask to reread config
-	rereadConfig();
 
 	return 0;
 }
