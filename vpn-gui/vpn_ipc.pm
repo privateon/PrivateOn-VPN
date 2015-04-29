@@ -207,4 +207,12 @@ sub removeRoute {
 	return $response;
 }
 
+sub writeDispatcher {
+	my $response = sendBackendQuery("write-dispatcher");
+	if ($response =~ /not ok/) {
+		print "\nError: could not write dispatcher file. Backend says: \"$response\"\n";
+	}
+	return $response;
+}
+
 1;
