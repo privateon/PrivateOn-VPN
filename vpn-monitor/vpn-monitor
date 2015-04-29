@@ -1398,6 +1398,7 @@ sub run_once
 	exit_if_not_root();
 
 	$ctx = new AnyEvent::Log::Ctx;
+	AnyEvent::Log::exact_time 0;
 	$ctx->log_to_file(LOG_FILE);
 	$ctx->log(info => "PrivateOn VPN-monitor daemon ".VERSION." starting up.");
 
