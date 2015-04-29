@@ -40,7 +40,8 @@ use vpn_countries qw(getCountryCodes getCountryList);
 use vpn_install qw(addConnections backupConnections restoreConnections);
 use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState 
 		takeABreak resumeIdling removeDispatcher removeRoute
-		disableMonitor enableMonitor undoCrippling forceRefresh);
+		disableMonitor enableMonitor undoCrippling forceRefresh
+		writeDispatcher rereadConfig);
 #use QtCore4::debug qw(ambiguous);
 #use Data::Dumper;
 
@@ -1023,26 +1024,15 @@ sub setDefaultVpn {
 	close $vpn_ini;
 
 	### setup dispatcher file
-	if ($uuid ne '') {
-		my $vpn_d;
-		unless (open $vpn_d, ">", DISPATCH_FILE) {
-			my $status_text = "Could not create '" . DISPATCH_FILE . "'  Reason: " . $! . "\n";
-			setStatusText($status_text);
-			return(1);
-		}
-		print $vpn_d "#!/bin/sh\n";
-		print $vpn_d "#$ccode-$type\n";
-		print $vpn_d "ESSID=\"$uuid\"\n";
-		print $vpn_d "\n";
-		print $vpn_d "interface=\$1 status=\$2\n";
-		print $vpn_d "case \$status in\n";
-		print $vpn_d "  up|vpn-down)\n";
-		print $vpn_d "	sleep 3 && /usr/bin/nmcli con up uuid \"\$ESSID\" &\n";
-		print $vpn_d "	;;\n";
-		print $vpn_d "esac\n";
-		close $vpn_d;
-		system("/usr/bin/chmod 755 ".DISPATCH_FILE);
+	my $result = writeDispatcher();
+	if ($result =~ /not ok/) {
+		my $status_text = "Could not write dispatcher file. " . $result . "\n";
+		setStatusText($status_text);
+		return(1);
 	}
+
+	# since we changed the ini file, ask to reread config
+	rereadConfig();
 
 	return 0;
 }
