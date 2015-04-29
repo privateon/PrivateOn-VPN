@@ -364,8 +364,10 @@ sub showNetStatus {
 		$status_text = "The network is online\n";
 	} elsif ($api_status == NET_CRIPPLED) {
 		$status_text = "The network is in safemode\n";
-	} else {
+	} elsif ($api_status == NET_OFFLINE || $api_status == NET_BROKEN) {
 		$status_text = "The network is offline\n";
+	} else {
+		$status_text = "The network state is unknown\n";
 	}
 
 	if ($api_status == NET_PROTECTED) {
@@ -376,10 +378,10 @@ sub showNetStatus {
 		$status_text .= "The VPN is being confirmed\n";
 	} elsif ($api_status == NET_UNCONFIRMED) {
 		$status_text .= "The VPN is unconfirmed\n";
-	} elsif ($api_status == NET_CRIPPLED) {
+	} elsif ($api_status == NET_UNPROTECTED || $api_status == NET_CRIPPLED || $api_status == NET_OFFLINE) {
 		$status_text .= "The VPN is down\n";
 	} else {
-		$status_text .= "The VPN is down\n";
+		$status_text .= "The VPN state is unknown\n";
 	}
 
 	my $current_state_string = getMonitorState();
