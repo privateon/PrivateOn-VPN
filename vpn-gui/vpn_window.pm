@@ -139,21 +139,8 @@ sub NEW {
 	$status->setMinimumHeight(75);
 	$status->setMaximumHeight(75);
 	this->{statusOutput} = $status;
-
-	# retrieve api_status
-	my $api_status = getApiStatus();
-
-	# show VPN/network/monitor status and set timer accordingly
-	unless ( showNetStatus($api_status) ) {
-		# monitor offline or other failure, switch to other mode
-		this->{updateStatusMode} = 'other';
-		this->{lastPtyRead} = time();
-		this->{internalTimer}->start(1000);
-	} elsif ($api_status == NET_CONFIRMING) {
-		this->{internalTimer}->start(1000);
-	} else {
-		this->{internalTimer}->start(20*1000);
-	}
+	my $status_text;
+	my $status_text_changed = 0;
 
 	# set default values to be used if values not found in ini file 
 	my $default_protocol = "udp";
@@ -173,8 +160,8 @@ sub NEW {
 			}
 		}
 	} else {
-		my $status_text = "No previous configuration file.\n";
-		setStatusText($status_text);
+		$status_text .= "No previous configuration file.\n";
+		$status_text_changed = 1;
 	}
 
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
@@ -244,11 +231,32 @@ sub NEW {
 
 	my $pty;
 	unless ($pty = IO::Pty::Easy->new) {
-		my $status_text = "Could not create new pty.  Reason: " . $! . "\n";
-		setStatusText($status_text);
-		return(1);
+		$status_text .= "Could not create new pty.  Reason: " . $! . "\n";
+		$status_text_changed = 1;
 	}
 	this->{pty} = $pty;
+
+	# retrieve api_status
+	my $api_status = getApiStatus();
+
+	# show VPN/network/monitor status and set timer accordingly
+	unless ( showNetStatus($api_status) ) {
+		# monitor offline or other failure, switch to other mode
+		this->{updateStatusMode} = 'other';
+		this->{lastPtyRead} = time();
+		this->{internalTimer}->start(1000);
+		updateStatusOther();
+		$status_text .= "Monitor is offline, please wait.\n";
+		$status_text_changed = 1;
+	} elsif ($api_status == NET_CONFIRMING) {
+		this->{internalTimer}->start(1000);
+	} else {
+		this->{internalTimer}->start(20*1000);
+	}
+
+	if ($status_text_changed) {
+		setStatusText($status_text);
+	}
 }
 
 
@@ -1348,6 +1356,7 @@ sub updateStatusNormal {
 		this->{updateStatusMode} = 'other';
 		this->{lastPtyRead} = time();
 		this->{internalTimer}->start(1000);
+		updateStatusOther();
 		return;
 	}
 
@@ -1458,6 +1467,7 @@ sub updateStatusOther {
 	# update buttons and retrieve monitor state (runs only every 10 sec)
 	my $current_monitor_state = updateButtons();
 	if ($current_monitor_state) {
+		# previous/current_monitor_state: Disabled/Enabled = 1, Unknown = 2 
 		unless ($previous_monitor_state) {
 			$previous_monitor_state = $current_monitor_state;
 		}
@@ -1467,10 +1477,15 @@ sub updateStatusOther {
 				this->{updateStatusMode} = 'normal';
 				updateStatusNormal();
 				return;
-			} elsif ($current_monitor_state == 2) {
-				$status_text .= "Monitor is offline, please wait.\n";
 			}
 			$previous_monitor_state = $current_monitor_state;
+		}
+		if ($current_monitor_state == 2) {
+			unless ($status_text =~ /Monitor\sis\soffline/) {
+				$status_text .= "Monitor is offline, please restart by\n";
+				$status_text .= " running 'vpn-monitor -s' as root.\n";
+				$status_text_changed = 1;
+			}
 		}
 	}
 
