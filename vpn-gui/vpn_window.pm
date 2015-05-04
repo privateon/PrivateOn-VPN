@@ -48,7 +48,7 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState
 use constant {
 	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
 	INI_FILE        => "/etc/PrivateOn/vpn-default.ini",
-	DEBUG           => 0,
+	DEBUG           => 2,
 	ENABLE_VPN      => 1,
 	ENABLE_DUAL_VPN => 1,
 	ENABLE_TOR_VPN  => 0
@@ -167,7 +167,7 @@ sub NEW {
 	my $serverCountryLabel = Qt::Label(this->tr('Server Country: '));
 	this->{serverCountryCombo} = Qt::ComboBox();
 	this->{serverCountryCombo}->setMinimumContentsLength(16);
-	this->{countrylist} = getComboboxCountries();
+	this->{countryList} = getComboboxCountries();
 	this->connect(this->{serverCountryCombo}, SIGNAL 'activated(int)', this, SLOT 'setCountry(int)');
 
 	my $serverTypeLabel = Qt::Label(this->tr('Server Type: '));
@@ -257,6 +257,7 @@ sub NEW {
 	if ($status_text_changed) {
 		setStatusText($status_text);
 	}
+	updateButtons(1);
 }
 
 
@@ -395,8 +396,7 @@ sub showNetStatus {
 	my $current_state_string = getMonitorState();
 	if ($current_state_string =~ /(\S+)-(\S+)-\S+/) {
 		my $monitor = $1;
-		my $task = $2;
-		if ( $task eq "unknown" ) {
+		if ( $monitor eq "Unknown" ) {
 			$status_text .= "The monitor state is unknown\n";
 			print "ERROR: getMonitorState returned unknown \"$current_state_string\" \n" if DEBUG > 0;
 		} elsif ( $monitor eq "Enabled" ) {
@@ -492,10 +492,28 @@ sub setButtons {
 		this->{refreshButton}->setEnabled(0);
 		this->{userpassButton}->setEnabled(0);
 	}
+
+	# if country list is empty tweak turnoffButton, disable refreshButton and enable userpassButton
+	unless (this->{countryCount}) {
+		if ( $network eq "PROTECTED" || $network eq "NEGATIVE" ||
+		   $network eq "CONFIRMING" || $network eq "UNCONFIRMED" ) {
+			this->{turnoffButton}->setEnabled(0);
+		} elsif ( $task eq "crippled" || $network eq "CRIPPLED" ) {
+			this->{turnoffButton}->setText(this->tr('Uncripple'));
+		}
+		this->{refreshButton}->setText(this->tr('No servers'));
+		this->{refreshButton}->setEnabled(0);
+		this->{userpassButton}->setEnabled(1);
+	}
 }
 
 
 sub updateButtons {
+	my ($force_flag) = @_;
+	if (not defined($force_flag)) {
+		$force_flag = 0;
+	}
+
 	# initialize persistent variables
 	state $last_state_read = 0; 		# epoch year 1970
 	state $previous_state_string = "";	
@@ -505,19 +523,18 @@ sub updateButtons {
 
 	# only update button text and enabled/disabled if 10 seconds has passed from last iteration
 	my $current_time = time();
-	if ($current_time - $last_state_read >= 10) {
+	if ( $force_flag || ($current_time - $last_state_read >= 10) ) {
 		$last_state_read = $current_time;
 
 		my $current_state_string = getMonitorState();
-		if ($current_state_string ne $previous_state_string) {
+		if ( $force_flag || ($current_state_string ne $previous_state_string) ) {
 			setButtons($current_state_string);
 			$previous_state_string = $current_state_string;
 		}
 
 		if ($current_state_string =~ /(\S+)-(\S+)-\S+/) {
 			my $monitor = $1;
-			my $task = $2;
-			if ( $task eq "unknown" ) {
+			if ( $monitor eq "Unknown" ) {
 				$monitor_state = 2;
 			} elsif ( $monitor eq "Enabled" ) {
 				$monitor_state = 1;
@@ -620,24 +637,26 @@ sub getComboboxCountries {
 			   $retval = $a_text eq $b_text ? $a cmp $b : $country_codes{$a_text} cmp $country_codes{$b_text};
 			   $retval;
 			} keys %$torlist) {
-		$a_text = "Tor : " . substr($country_codes{$c},0,10);
-		this->{serverCountryCombo}->addItem($a_text);
+			$a_text = "Tor : " . substr($country_codes{$c},0,10);
+			this->{serverCountryCombo}->addItem($a_text);
 
-		if ($default_ccode eq $c) {
-			if ($default_vpntype eq 'tor') {
-				this->{serverCountryCombo}->setCurrentIndex($i);
-				this->{id_country} = $i;
+			if ($default_ccode eq $c) {
+				if ($default_vpntype eq 'tor') {
+					this->{serverCountryCombo}->setCurrentIndex($i);
+					this->{id_country} = $i;
+				} else {
+					$i++;
+				}
 			} else {
-				$i++;
+				$i++
 			}
-		} else {
-			$i++
+			push @country, ("tor_" . $c);
 		}
-		push @country, ("tor_" . $c);
-	}}
+	}
+
+	this->{countryCount} = scalar(@country);
 	if (DEBUG > 0) {
-		print STDERR "getComboboxCountries returning " . scalar(@country) . " entries\n";
-		print STDERR "Countries: " . join(", ", @country) . "\n";
+		print STDERR "getComboboxCountries returned " . this->{countryCount} . " entries\n";
 	}
 	return \@country;
 }
@@ -646,6 +665,7 @@ sub getComboboxCountries {
 ################      Username/Password management      ################
 sub setUserInfo {
 	this->{userpassButton}->setEnabled(0);
+	this->{internalTimer}->start(120*1000);
 	my $tmp = getUserInfo();
 	my %userInfo = %$tmp;
 	my $status_text;
@@ -659,6 +679,7 @@ sub setUserInfo {
 		$status_text = "Note: Can not open your VPN connection files.\n";
 		setStatusText($status_text);
 		this->{userpassButton}->setEnabled(1);
+		this->{internalTimer}->start(30*1000);
 		return $userInfo{code};
 	}
 	my ($ok, $password);
@@ -680,6 +701,7 @@ sub setUserInfo {
 		$status_text .= "and retrieve latest server list.";
 		setStatusText($status_text);
 		this->{userpassButton}->setEnabled(1);
+		this->{internalTimer}->start(30*1000);
 		return 1;
 	}
 
@@ -701,21 +723,25 @@ sub setUserInfo {
 		if ($ac_rc != 0) {
 			setStatusText($status_text);
 			this->{userpassButton}->setEnabled(1);
+			this->{internalTimer}->start(30*1000);
 			return $userInfo{code};
 		}
 	}
 
 	# reread country list
 	this->{serverCountryCombo}->clear();
-	this->{countrylist} = getComboboxCountries();
+	this->{countryList} = getComboboxCountries();
+	updateButtons(1);
 
 	# load new system connection into NetworkManager
 	system("/sbin/service network force-reload");
 
-	$status_text = "Successful to set the Username and password!\n";
+	$status_text = "VPN servers updated!\n";
+	$status_text .= "Username and password set.\n";
 	setStatusText($status_text);
 
 	this->{userpassButton}->setEnabled(1);
+	this->{internalTimer}->start(30*1000);
 	return 0;
 }
 
@@ -723,20 +749,17 @@ sub setUserInfo {
 sub getUserInfo {
 	my %userInfo = ();
 	$userInfo{code} = 0;
-	my $country = this->{id_country};
-	my $server = this->{id_serverType};
-	my @countrylist = @{this->{countrylist}};
-	if (not defined $country) {
-		$country = 0;
-	}
-	if (not defined $server) {
-		$server = 0;
-	}
 
-	my $ccode = $countrylist[$country];
-	my $stype = $server == 0 ? "tcp" : "udp";
-	my $system_connection_file = "";	
+	my $countrylist = this->{countryList};
+	my $ccode = (defined($countrylist) && this->{countryCount} > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
 
+	my $servertype = this->{id_serverType};
+	if (not defined $servertype) {
+		$servertype = 0;
+	}
+	my $stype = $servertype == 0 ? "tcp" : "udp";
+
+	my $system_connection_file = "";
 	# scan directory for matching files
 	my @tmplist = glob("/etc/NetworkManager/system-connections/*-$ccode-*-$stype");
 	foreach my $file (@tmplist) {
@@ -869,15 +892,14 @@ sub updateDefaultVpnResume {
 	print "Resume activation of VPN\n" if DEBUG > 0;
 	my $status_text;
 
-	my $countrylist = this->{countrylist};
-	my $homedir = $ENV{HOME}.'/';
+	my $countrylist = this->{countryList};
 	my $configfiledir = "/etc/openvpn/";
 	my $vpntype;
 	my $comment;
 	my $configfile;
 
 	print "Country ID is " . this->{id_country} . "\n" if DEBUG > 1;
-	my $ccode = (defined($countrylist) && scalar(@$countrylist) > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
+	my $ccode = (defined($countrylist) && this->{countryCount} > this->{id_country}) ? $countrylist->[this->{id_country}] : '';
 	my $stype = this->{id_serverType} == 0 ? 'tcp' : 'udp';
 
 	# scan directory for matching files
@@ -1064,7 +1086,7 @@ sub turnOffVpn {
 		return 0;
 
 	# network status = CRIPPLED
-	} elsif (this->{turnoffButton}->text eq "No VPN") {
+	} elsif (this->{turnoffButton}->text eq "No VPN" || this->{turnoffButton}->text eq "Uncripple") {
 		removeDispatcher(DEBUG);
 		disableMonitor(DEBUG);
 		undoCrippling(DEBUG);
@@ -1360,7 +1382,7 @@ sub updateStatusNormal {
 		return;
 	}
 
-	updateButtons();
+	updateButtons(0);
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
 		this->{internalTimer}->start(60*1000);
@@ -1465,7 +1487,7 @@ sub updateStatusOther {
 	$previous_status = $current_status;
 
 	# update buttons and retrieve monitor state (runs only every 10 sec)
-	my $current_monitor_state = updateButtons();
+	my $current_monitor_state = updateButtons(0);
 	if ($current_monitor_state) {
 		# previous/current_monitor_state: Disabled/Enabled = 1, Unknown = 2 
 		unless ($previous_monitor_state) {

@@ -192,8 +192,8 @@ sub getMonitorState {
 		if ( defined($debug_flag) && $debug_flag > 0 ) {
 			print "\nError: monitor-state returned invalid result \"$response\" \n";
 		}
-		# assume disabled and unknown
-		$response = "Disabled-unknown-UNKNOWN";
+		# if monitor is offline or unresponsive, mark all fields as unknown
+		$response = "Unknown-unknown-UNKNOWN";
 	}
 	return $response;
 }
