@@ -668,15 +668,15 @@ sub setUserInfo {
 	this->{internalTimer}->start(120*1000);
 	my $tmp = getUserInfo();
 	my %userInfo = %$tmp;
-	my $status_text;
+	my $status_text = '';
 
 	if ($userInfo{code} == 1) {
-		$status_text = "Note: There are no VPN connection installed.\n";
+		$status_text .= "Note: There are no VPN connection installed.\n";
 		setStatusText($status_text);
 		$userInfo{username} = "";
 		$userInfo{password} = "";
 	} elsif ($userInfo{code} == 2) {
-		$status_text = "Note: Can not open your VPN connection files.\n";
+		$status_text .= "Note: Can not open your VPN connection files.\n";
 		setStatusText($status_text);
 		this->{userpassButton}->setEnabled(1);
 		this->{internalTimer}->start(30*1000);
@@ -711,10 +711,10 @@ sub setUserInfo {
 		$ac_rc = addConnections($username, $password);
 		if ($ac_rc == 1) {
 			restoreConnections('missing');
-			$status_text = "Note: Can not create all connections for you due to partial failure\n";
+			$status_text .= "Note: Can not create all connections for you due to partial failure\n";
 		} elsif ($ac_rc == 2) {
 			restoreConnections('all');
-			$status_text = "Note: Can not create all connections for you due to complete failure\n";
+			$status_text .= "Note: Can not create all connections for you due to complete failure\n";
 		}
 
 		# since we changed the ini file, ask monitor to reread config
@@ -736,7 +736,7 @@ sub setUserInfo {
 	# load new system connection into NetworkManager
 	system("/sbin/service network force-reload");
 
-	$status_text = "VPN servers updated!\n";
+	$status_text .= "\nVPN servers updated!\n";
 	$status_text .= "Username and password set.\n";
 	setStatusText($status_text);
 
@@ -794,22 +794,26 @@ sub getUserInfo {
 
 ################     Refresh/Activate VPN connection    ################
 sub updateDefaultVpn {
-
+	# disable refresh button for 20 seconds
 	this->{refreshButton}->setEnabled(0);
-	this->{buttonTimer}->start(20000);
+	this->{buttonTimer}->start(20*1000);
 
 	startTask();
 
-	my $status_text;
-
-	undoCrippling(DEBUG) if (getCripplingStatus(DEBUG));
+	# Clear previous status text and disable normal/other update for 2 minutes or until timer restarted
+	my $status_text = '';
+	this->{internalTimer}->start(120*1000);
 
 	my $api_status = getNetStatus();
+	if ($api_status == NET_CRIPPLED || getCripplingStatus(DEBUG)) {
+		undoCrippling(DEBUG);
+		$status_text .= "Deactivating Safemode.\n";
+	}
+
 	if ($api_status == NET_PROTECTED || $api_status == NET_NEGATIVE || 
 	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
-		$status_text = "The VPN connection is deactivating,\n";
-		$status_text .= "Please hold on.\n";
-		setStatusText($status_text);
+		$status_text .= "The VPN connection is deactivating,\n";
+		$status_text .= "Please hold on.\n\n";
 		print "VPN is active, deactivating...\n" if DEBUG > 0;
 
 		# detect nmcli version
@@ -845,7 +849,7 @@ sub updateDefaultVpn {
 			my $vpn_name = $conn->{connection}->{id};
 			if ( $failover_mode  || ($vpn_name ~~ @active_conns) ) {
 				try {
-					print "deactivating " . $vpn_name . "\n" if DEBUG > 0;
+					print "Deactivating " . $vpn_name . "\n" if DEBUG > 0;
 					if (!$failover_mode) {
 						$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
 
@@ -876,13 +880,13 @@ sub updateDefaultVpn {
 				};
 			}
 		}
-	} elsif ($api_status == NET_CRIPPLED) {
-		undoCrippling(DEBUG);
 	}
 
-	# return to QT event loop for 4 seconds
+	setStatusText($status_text);
+
+	# return to QT event loop for 0.5 seconds
 	print "Start resume vpn timer\n" if DEBUG > 0;
-	this->{resumeVpnTimer}->start(2000);
+	this->{resumeVpnTimer}->start(500);
 }
 
 
@@ -890,7 +894,15 @@ sub updateDefaultVpnResume {
 	system("pkill -9 openvpn");
 	this->{resumeVpnTimer}->stop;
 	print "Resume activation of VPN\n" if DEBUG > 0;
-	my $status_text;
+
+	my $status = this->{statusOutput};
+	my $status_text = $status->toPlainText();
+
+	# read output from deactivation pty now, otherwise the status text order will be wrong
+	my $pty = this->{pty};
+	while ( my $output = $pty->read(0) ) {
+		$status_text .= $output;
+	}
 
 	my $countrylist = this->{countryList};
 	my $configfiledir = "/etc/openvpn/";
@@ -921,17 +933,15 @@ sub updateDefaultVpnResume {
 	}else {
 		print "glob files: @tmplist\n" if DEBUG > 0;
 		print "ERROR: config file: \{TYPE\}-$ccode-\{COMMENT\}-$stype.ovpn not found!\n" if DEBUG > 0;
-		$status_text = "Error: Configuration file not found!\n";
-		$status_text .="Check that the selected server\n";
-		$status_text .="supports protocol " . uc($stype) . ".\n";
+		$status_text .= "\nError: Configuration file not found!\n";
+		$status_text .= "Check that the selected server\n";
+		$status_text .= "supports protocol " . uc($stype) . ".\n";
 		setStatusText($status_text);
-		this->{internalTimer}->start(10*60*1000);
+		this->{internalTimer}->start(120*1000);
 		forceRefresh(DEBUG);
 		return;
 	}
 
-
-	my $pty = this->{pty};
 	my $pid = $pty->pid();
 	if ($pty->is_active and defined $pid) {
 		system("/usr/bin/kill -9 $pid");
@@ -942,24 +952,22 @@ sub updateDefaultVpnResume {
 	}
 	print "ccode = $ccode\tstype = $stype\n" if DEBUG > 0;
 	my $return_code = setDefaultVpn($configfile, $ccode, $comment, $stype, $vpntype);
-	my $status = this->{statusOutput};
-	$status_text = $status->toPlainText();
 	if ($return_code == 1) {
 		$status_text .= "\nThere are no VPN connections!\n";
 		$status_text .= "Please click 'Servers'\n"; 
 		$status_text .= "to set your username/password\n"; 
-		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
 	} elsif ($return_code !=0) {
 		$status_text .= "\nUnexcepted Error.\n";
-		setStatusText($status_text);
 		this->{internalTimer}->start(10*60*1000);
 	}else {
 		$status_text .= "\nThe VPN connection will be activated,\n";
-		$status_text .= "Please hold on.\n";
-		setStatusText($status_text);
-		this->{internalTimer}->start(5*1000);
+		$status_text .= "Please hold on.\n\n";
+		this->{updateStatusMode} = 'other';
+		this->{internalTimer}->start(1000);
 	}
+	setStatusText($status_text);
+
 	enableMonitor(DEBUG);
 	forceRefresh(DEBUG);
 }
@@ -973,7 +981,7 @@ sub setDefaultVpn {
 	my $return_code = 0;
 	my $pty = this->{pty};
 	my $spawn_out;
-	my $status_text;
+	my $status_text = '';
 
 	print STDERR "Setting default vpn: \$configfile = '$configfile', \$ccode = '$ccode', \$type = '$type', \$vpntype = '$vpntype'\n" if DEBUG > 0;
 
@@ -981,7 +989,9 @@ sub setDefaultVpn {
 	my $id = $vpntype . "-" . $ccode . "-" . $comment . "-" . $type;
 	if (-r $sysconnections . $id && -r '/etc/ca-certificates/' . $id . ".ca" && -r '/etc/ca-certificates/' . $id . ".auth") {
 		unless (open IN, $sysconnections.$id) {
-			my $status_text = "Could not open VPN config file for reading. Reason: " . $! . "\n";
+			my $status = this->{statusOutput};
+			$status_text = $status->toPlainText();
+			$status_text .= "Could not open VPN config file for reading. Reason: " . $! . "\n";
 			setStatusText($status_text);
 			return(1);
 		}
@@ -1003,9 +1013,9 @@ sub setDefaultVpn {
 		};
 	} else {
 		my $status = this->{statusOutput};
-		my $status_text = $status->toPlainText();
+		$status_text = $status->toPlainText();
 		$status_text .= "No system connection file found.\n";
-		this->{statusOutput} = $status;
+		setStatusText($status_text);
 		return 1;
 	}
 	if ($uuid eq "") {
@@ -1028,11 +1038,13 @@ sub setDefaultVpn {
 		close $vpn_ini;
 	} else {
 		my $error = $!;
+		my $status = this->{statusOutput};
+		$status_text = $status->toPlainText();
 		if ( -e INI_FILE ) {
 			print STDERR "Could not open " . INI_FILE . " for reading.  Reason: " . $error . "\n";
 			print STDERR "Deleting old ini file.\n";
 			unlink(INI_FILE);
-			$status_text = "Deleted old ini file.\n";
+			$status_text .= "Deleted old ini file.\n";
 		}
 		print STDERR "Creating new ini file " . INI_FILE . "\n";
 		$status_text .= "Creating new ini file '" . INI_FILE . "'\n";
@@ -1047,7 +1059,9 @@ sub setDefaultVpn {
 
 	# write ini file
 	unless (open $vpn_ini, ">", INI_FILE) {
-		my $status_text .= "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";
+		my $status = this->{statusOutput};
+		$status_text = $status->toPlainText();
+		$status_text .= "Could not create '" . INI_FILE . "'  Reason: " . $! . "\n";
 		setStatusText($status_text);
 		return(1);
 	}
@@ -1062,7 +1076,9 @@ sub setDefaultVpn {
 	### setup dispatcher file
 	my $result = writeDispatcher();
 	if ($result =~ /not ok/) {
-		my $status_text .= "Could not write dispatcher file. " . $result . "\n";
+		my $status = this->{statusOutput};
+		$status_text = $status->toPlainText();
+		$status_text .= "Could not write dispatcher file. " . $result . "\n";
 		setStatusText($status_text);
 	}
 
@@ -1072,6 +1088,8 @@ sub setDefaultVpn {
 
 ################     Deactivate VPN / Fix connection    ################
 sub turnOffVpn {
+	# Disable normal/other update for 2 minutes or until timer restarted
+	this->{internalTimer}->start(120*1000);
 
 	# network status = PROTECTED or monitor = Disabled
 	if (this->{turnoffButton}->text eq "Turn off") {
@@ -1108,15 +1126,14 @@ sub turnOffVpn {
 	}
 
 	my $status_text = "The VPN connection is deactivating,\n";
-	$status_text .= "Please hold on.\n";
+	$status_text .= "Please hold on.\n\n";
 
 	startTask();
 	disableMonitor(DEBUG);
 
 	if (getCripplingStatus(DEBUG)) {
 		undoCrippling(DEBUG);
-		$status_text = "The VPN connection is deactivated.\n";
-		setStatusText($status_text);
+		setStatusText("Safemode deactivated.\n");
 		return 0;
 	}
 
@@ -1146,7 +1163,7 @@ sub turnOffVpn {
 		this->{active_conns} = \@active_conns;
 	} else {
 		if (defined this->{active_conns}) { undef this->{active_conns} };
-		$status_text = "Forcing VPN deactivation,\n";
+		$status_text .= "Forcing VPN deactivation,\n";
 		$status_text .= "This may take a few seconds.\n";
 	}
 
@@ -1211,12 +1228,13 @@ sub turnOffVpnResume {
 	}
 	system("pkill -9 openvpn");
 	forceRefresh(DEBUG);
-	this->{internalTimer}->start(5*1000);
+	this->{updateStatusMode} = 'other';
+	this->{internalTimer}->start(1000);
 
 	if ($failover_mode) {
 		my $status = this->{statusOutput};
 		my $status_text = $status->toPlainText();
-		$status_text = "The VPN connection is deactivated.\n";
+		$status_text .= "The VPN connection is deactivated.\n";
 		setStatusText($status_text);
 	}
 	
@@ -1335,6 +1353,10 @@ sub fixConnectionResume {
 		};
 	}
 
+	forceRefresh(DEBUG);
+	this->{updateStatusMode} = 'other';
+	this->{internalTimer}->start(1000);
+
 	return 0;
 }
 
@@ -1435,18 +1457,17 @@ sub updateStatusOther {
 	if ($active_flag) {
 		# display progress indicator dots
 		if ($status_text =~ /please\shold\son/i) {
+			# remove all carriage return characters
+			$status_text =~ s/[\r]//g;
 			# add progress indicator dots if last line of status text is 'Please hold on'
-			if ($status_text =~ /please\shold\son[.]?[\r]?[\n]?[.]*$/i) {
-				unless ($status_text =~ /please\shold\son[.]?[\r]?[\n]?$/i) {
-					chomp $status_text;
-				}
+			if ($status_text =~ /please\shold\son[.]?[\s]*[\n]*[.]*[\n]*$/i) {
+				chomp $status_text;
 				$status_text .= ".\n";
-				$status_text_changed = 1;
 			} else {
-			# since the task is completed, remove dots and lines before the dots
-				$status_text =~ s/.*[\r]?[\n]?.*please\shold\son[.]?[\r]?[\n]?[.]*[\r]?[\n]?//i;
-				$status_text_changed = 1;
+				# since the task is completed, remove 'Please hold on' text and progress indicator dots
+				$status_text =~ s/please\shold\son[.]?[\s]*[\n]*[.]*[\n]?/\n/i;
 			}
+			$status_text_changed = 1;
 		}
 
 		if ($status_text_changed) {
