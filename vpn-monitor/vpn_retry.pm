@@ -93,14 +93,21 @@ sub execute_system_command
 	my ($cmd, $ctx) = @_;
 	$ctx->log(debug => "\tActivation command = $cmd") if DEBUG > 1;
 
-	unless (DEBUG){
-		return system($cmd. " >/dev/null 2&1");
+	my $result;
+	unless (DEBUG) {
+		$result = system($cmd. " >/dev/null 2&1");
+	} else {
+		my $output = `$cmd`;
+		$result = $?;
+		$ctx->log(debug => "\tNetworkManager told us: $output");
 	}
 
-	# run system command using backticks to log possible error message
-	my $output = `$cmd`;
-	my $result = $?;
-	$ctx->log(debug => "\tNetworkManager told us: $output"); 
+	# if command was successful, delay returning to callback in main process
+	if ($result eq 0) {
+		$ctx->log(info => "Waiting for VPN connection to stabilize (vpn_retry child)" );
+		sleep 10;
+	}
+
 	return $result;
 }
 
@@ -163,7 +170,7 @@ sub retry_vpn
 			last;
 		} else {
 			if (quick_net_status($ctx) == NET_PROTECTED) { return 0; }
-			sleep 10;
+			sleep 4;
 		}
 	}
 	if (quick_net_status($ctx) == NET_PROTECTED) { return 0; }
@@ -183,14 +190,14 @@ sub retry_vpn
 		if ($log_time != $mtime) {
 			last;
 		} else {
-			sleep 5;
+			sleep 3;
 		}
 	}
 
 	return activate_vpn($ctx);
 }
 
- 
+
 sub run 
 {
 	my ($done) = @_;
