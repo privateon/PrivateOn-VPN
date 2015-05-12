@@ -1300,9 +1300,18 @@ sub spawn_retry_vpn
 
 sub retry_vpn_callback
 {
+	my $result = shift;
+	if ($result eq 0) {
+		$ctx->log(info => "VPN activation successful");
+	} else {
+		$ctx->log(info => "VPN activation failed");
+		$ctx->log(debug => "Retry_vpn child process returned error code: " .  $result) if DEBUG > 0;
+	}
+
 	set_current_task_to_idle(0);
 
 	$Current_Status = quick_net_status();
+	$ctx->log(debug => "\tcurrent_status = " . get_status_text($Current_Status) ) if DEBUG > 1;
 	if ( $Current_Status == NET_UNPROTECTED && 
 	   (CRIPPLE_WHEN_UNPROTECTED eq 'TRUE' || CRIPPLE_WHEN_UNPROTECTED eq '1') ) {
 		redirect_page();
