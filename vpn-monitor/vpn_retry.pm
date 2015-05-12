@@ -88,6 +88,23 @@ sub quick_net_status
 }
 
 
+sub execute_system_command
+{
+	my ($cmd, $ctx) = @_;
+	$ctx->log(debug => "\tActivation command = $cmd") if DEBUG > 1;
+
+	unless (DEBUG){
+		return system($cmd. " >/dev/null 2&1");
+	}
+
+	# run system command using backticks to log possible error message
+	my $output = `$cmd`;
+	my $result = $?;
+	$ctx->log(debug => "\tNetworkManager told us: $output"); 
+	return $result;
+}
+
+
 sub activate_vpn
 {
 	my $ctx = shift;
@@ -101,7 +118,7 @@ sub activate_vpn
 	unless (open $vpn_ini, INI_FILE) {
 		$ctx->log(error => "Could not open '" . INI_FILE . "'  Reason: " . $! ." (vpn_retry child)");
 		$ctx->log(error => "Activating failure-mode VPN (vpn_retry child)");
-		return system("/usr/bin/nmcli conn up id " . $hardcoded_default_id . " >/dev/null 2&1");
+		return execute_system_command("/usr/bin/nmcli conn up id $hardcoded_default_id", $ctx);
 	}
 	while (my $line = <$vpn_ini>) {
 		if ($line =~/^id=(\S+)/) {
@@ -111,7 +128,8 @@ sub activate_vpn
 	}
 	close $vpn_ini;
 	if ($id eq '') { $id = $hardcoded_default_id; };
-	return system("/usr/bin/nmcli conn up id $id >/dev/null 2&1");
+
+	return execute_system_command("/usr/bin/nmcli conn up id $id", $ctx);
 }
 
 
