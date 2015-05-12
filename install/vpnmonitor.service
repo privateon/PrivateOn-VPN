@@ -8,7 +8,6 @@
 
 [Unit]
 Description=PrivateOn VPN Monitor
-Requires=network.service
 
 [Service]
 Type=forking
