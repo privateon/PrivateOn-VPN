@@ -639,6 +639,11 @@ sub set_current_task_to_idle
 {
 	my $override_temporary_disable = shift;
 
+	# don't change task if monitor is retrying the VPN
+	if ($Current_Task eq "retrying") {
+		return;
+	}
+
 	# set task to "temporary" if Temporary_Disable_Timer still running and override is not requested
 	if ($override_temporary_disable) {
 		$Current_Task = "idle";
