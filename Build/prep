@@ -51,6 +51,10 @@ cp install/man/* $buildroot/usr/share/man/man8
 find $buildroot/usr/share/man/man8/ -type f -exec gzip '{}' \;
 rm -f $buildroot/opt/PrivateOn-VPN/vpn-monitor/htdocs/errors/.empty
 
+# Change GitHub Release to RPM Release
+sed -i "s/<br>GitHub Release/<br>\&nbsp;\&nbsp;RPM Release/g" $buildroot/opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
+sed -i "s/(GitHub Release)/   (RPM Release)/g" $buildroot/opt/PrivateOn-VPN/vpn-gui/vpn_tray.pm
+
 # Make tarball
 tar -czf privateon-vpn-${VERSION}.tar.gz $buildroot/
 cp privateon-vpn-${VERSION}.tar.gz $SOURCES/
