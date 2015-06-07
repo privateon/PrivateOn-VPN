@@ -49,8 +49,6 @@ use AnyEvent::Fork::RPC;
 use AnyEvent::HTTP;
 use AnyEvent::CacheDNS ':register';
 
-use Data::Dumper;
-
 use constant {
 	PATH          => '/opt/PrivateOn-VPN/',
 	STATUS_FILE   => '/var/run/PrivateOn/.status',
@@ -60,7 +58,7 @@ use constant {
 	DISPATCH_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
 	INI_FILE      => '/etc/PrivateOn/vpn-default.ini',
 	SERVICE_NAME  => 'vpnmonitor',
-	VERSION       => '0.9',
+	VERSION       => '1.0',
 	DEBUG         => 1
 };
 

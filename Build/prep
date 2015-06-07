@@ -13,7 +13,7 @@
 # . Build/prep
 # rpmbuild -v -bb --clean privateon-vpn.spec
 
-VERSION=0.9
+VERSION=1.0
 RELEASE=1
 DISTRIBUTION="openSUSE 13.2"
 SOURCES=/usr/src/packages/SOURCES

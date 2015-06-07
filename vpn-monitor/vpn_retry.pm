@@ -20,7 +20,7 @@ use constant {
 	LOG_FILE      => "/var/log/PrivateOn.log",
 	INI_FILE      => "/etc/PrivateOn/vpn-default.ini",
 	DISPATCH_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
-	VERSION       => "0.9",
+	VERSION       => "1.0",
 	DEBUG         => 1
 };
 
