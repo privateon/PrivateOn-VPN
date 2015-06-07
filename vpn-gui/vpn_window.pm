@@ -42,13 +42,11 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState
 		takeABreak resumeIdling forceRefresh undoCrippling
 		removeDispatcher writeDispatcher removeRoute rereadConfig
 		disableMonitor enableMonitor); 
-#use QtCore4::debug qw(ambiguous);
-#use Data::Dumper;
 
 use constant {
 	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
 	INI_FILE        => "/etc/PrivateOn/vpn-default.ini",
-	DEBUG           => 2,
+	DEBUG           => 0,
 	ENABLE_VPN      => 1,
 	ENABLE_DUAL_VPN => 1,
 	ENABLE_TOR_VPN  => 0
