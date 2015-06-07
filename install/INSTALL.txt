@@ -9,10 +9,25 @@
 ### Install instruction for PrivateOn-VPN package
 ###
 
-## note: these instructions are for OpenSuse version 12.x and 13.x
-## if you are installing on another disto, you will have to use your disto's repository in place of zypper
+## The preferred way of installing this software is by adding PrivateOn's repository to your system.
+## By installing the PrivateOn-VPN package and dependencies from there, 
+## your installation is updated every time a new stable release is published.
+https://software.opensuse.org/download.html?project=home%3APrivateOn&package=PrivateOn-VPN
+ 
+## If you'd like to try the bleeding edge untested features and fixes, 
+## we suggest you install the RPM-release, delete the /opt/PrivateOn-VPN directory 
+## and clone the git repository onto your system.
+## In this case, disregard the rest of the instructions in this file.
 
-## note: all the install commands are run as root user!
+
+## If you'd like to like to install the software from scratch or you are installing 
+## the software onto another OS or distro, please follow or improvise these steps. 
+
+## note: these instructions are for OpenSuse version 12.x and 13.x
+## if you are installing on another OS or disto, use your system's repository tool in place of zypper
+
+
+## note: all the install commands are run as root user
 
 
 ### Step 1.	Install build tools if not already installed, e.g. gcc, make, bison ect
@@ -37,7 +52,7 @@ zypper install thttpd dnsmasq xhost
 cpan install AnyEvent::Fork
 
 ## If installation fails with test errors, run the following:
-cd /root/.cpan/build/AnyEvent-Fork-1.2-iyHOck/ ( the 6 characters of the path are unique, yours will differ )
+cd /root/.cpan/build/AnyEvent-Fork-1.2-iyHOck/ ( the last 6 characters of the path are unique, yours will differ )
 perl Makefile.PL
 
 ## Edit file Fork.pm line 630 with your favorite editor
@@ -59,6 +74,8 @@ make install
 ### Step 5. 	Install more dependencies
 cpan install AnyEvent::Impl::POE
 cpan install AnyEvent::Fork::RPC
+cpan install AnyEvent::HTTP
+cpan install AnyEvent::CacheDNS
 cpan install File::Pid
 cpan install HTTP::Lite
 cpan install IO::Interface::Simple
@@ -72,7 +89,7 @@ cpan install UI::Dialog::Backend::KDialog
 
 ## 6a 	for systemd services
 cp -p /opt/PrivateOn-VPN/install/vpnmonitor.service /etc/systemd/system/vpnmonitor.service
-ln -s service /usr/sbin/rcvpnmonitor
+ln -sf /usr/sbin/service /usr/sbin/rcvpnmonitor
 service vpnmonitor status
 
 	## or ##
@@ -93,7 +110,14 @@ cp -pr sudoers* /etc/
 cp -p VPN.desktop /home/--USER--/Desktop/
 
 
-### Step 9. 	Test vpn-monitor installation
+### Step 9. 	Directories and symlinks
+mkdir -p /etc/PrivateOn
+mkdir -p --mode=755 /var/run/PrivateOn
+ln -sf /opt/PrivateOn-VPN/vpn-gui/vpn-gui /usr/bin/vpn-gui
+ln -sf /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor /usr/bin/vpn-monitor
+
+
+### Step 10. 	Test vpn-monitor installation
 ## Start monitor in foreground mode as root:
 /opt/PrivateOn-VPN/vpn-monitor/vpn-monitor -f
 
@@ -105,7 +129,7 @@ cat /var/log/PrivateOn.log
 rcvpnmonitor start
 
 
-### Step 10. 	Test vpn-gui installation
+### Step 11. 	Test vpn-gui installation
 ## Run GUI from command line as root:
 /opt/PrivateOn-VPN/vpn-gui/vpn-gui
 
@@ -130,7 +154,7 @@ ln -s --RESULT-- /usr/lib/
       use Devel::Peek;
 
 
-### Step 11. 	After setup works, install and configure monit to guard that the vpn-monitor is always up
+### Step 12. 	Optional - After setup works, install and configure monit to guard that the vpn-monitor is always up
 zypper install monit
 cp -p /opt/PrivateOn-VPN/install/monitrc /etc/monitrc
 mkdir -p /etc/monit.d/
