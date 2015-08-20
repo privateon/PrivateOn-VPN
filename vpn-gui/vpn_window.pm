@@ -42,7 +42,8 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState
 		takeABreak resumeIdling forceRefresh undoCrippling
 		removeDispatcher writeDispatcher removeRoute rereadConfig
 		disableMonitor enableMonitor); 
-use vpn_network qw(getVpnConnection isVpnActive);
+use vpn_network qw(getVpnConnection isVpnActive
+		isNetworkManagerEnabled explainNetworkManagerProblem);
 
 use constant {
 	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
@@ -779,6 +780,13 @@ sub updateDefaultVpn {
 		$status_text .= "Deactivating Safemode.\n";
 	}
 
+	# check NetworkManager and nmcli
+	unless ( isNetworkManagerEnabled() ) {
+		$status_text .= explainNetworkManagerProblem();
+		setStatusText($status_text);
+		return;
+	}
+
 	if ($api_status == NET_PROTECTED || $api_status == NET_NEGATIVE || 
 	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
 		$status_text .= "The VPN connection is deactivating,\n";
@@ -952,6 +960,13 @@ sub setDefaultVpn {
 	my $spawn_out;
 	my $status_text = '';
 
+	# check NetworkManager and nmcli
+	unless ( isNetworkManagerEnabled() ) {
+		$status_text .= explainNetworkManagerProblem();
+		setStatusText($status_text);
+		return 1;
+	}
+
 	print STDERR "Setting default vpn: \$configfile = '$configfile', \$ccode = '$ccode', \$type = '$type', \$vpntype = '$vpntype'\n" if DEBUG > 0;
 
 	my $sysconnections = "/etc/NetworkManager/system-connections/";
@@ -1085,7 +1100,7 @@ sub turnOffVpn {
 	} elsif (this->{turnoffButton}->text eq "Fix") {
 		fixConnection();
 		return 0;
-
+		
 	# error cases
 	} else {
 		# disable NetworkManager to force restart
@@ -1094,6 +1109,18 @@ sub turnOffVpn {
 		return 0;
 	}
 
+	
+	# check NetworkManager and nmcli
+	unless ( isNetworkManagerEnabled() ) {
+		my $status_text .= explainNetworkManagerProblem();
+		setStatusText($status_text);
+		system("pkill -9 openvpn");
+		forceRefresh(DEBUG);
+		this->{updateStatusMode} = 'other';
+		this->{internalTimer}->start(1000);
+		return;
+	}
+	
 	my $status_text = "The VPN connection is deactivating,\n";
 	$status_text .= "Please hold on.\n\n";
 
@@ -1280,6 +1307,16 @@ sub fixConnectionResume {
 		$interface_array[1] = "wlp2s0";
 		$status_text .= "No interfaces found, using default list\n";
 		setStatusText($status_text);
+	}
+
+	# check NetworkManager and nmcli
+	unless ( isNetworkManagerEnabled() ) {
+		$status_text .= explainNetworkManagerProblem();
+		setStatusText($status_text);
+		forceRefresh(DEBUG);
+		this->{updateStatusMode} = 'other';
+		this->{internalTimer}->start(1000);
+		return 1;
 	}
 
 	foreach my $interface (@interface_array) {
