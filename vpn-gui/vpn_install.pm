@@ -276,7 +276,7 @@ sub addConnections
 
 	my $vpn_count = 0;
 	foreach my $file (@$filelist) {
-		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]*|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
 			system("/usr/bin/cp " . TMP_PATH . "$file /etc/openvpn/");
 			my $kind = $1;
 			my $countrycode = $2;

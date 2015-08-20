@@ -147,7 +147,7 @@ sub NEW {
 		while (my $line = <$vpn_ini>) {
 			if ($line =~ /^id=(\S+)/) {
 				my $id = $1;
-				if ($id =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
+				if ($id =~ /(double|tor|vpn)-([a-z][a-z][0-9]*|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
 					this->{vpnType} = $1;
 					this->{country} = $2;
 					this->{protocol} = $4;
@@ -577,7 +577,7 @@ sub getComboboxCountries {
 			   $retval = $a_text eq $b_text ? $a cmp $b : $country_codes{$a_text} cmp $country_codes{$b_text};
 			   $retval;
 			} keys %$vpnlist) {
-		if ($c =~ /([a-z][a-z])([0-9])/) {
+		if ($c =~ /([a-z][a-z])([0-9]*)/) {
 			this->{serverCountryCombo}->addItem(substr($country_codes{$1},0,15) . " " . $2);
 		} else {
 			this->{serverCountryCombo}->addItem(substr($country_codes{$c},0,15));
@@ -604,7 +604,7 @@ sub getComboboxCountries {
 			   $retval = $a_text eq $b_text ? $a cmp $b : $country_codes{$a_text} cmp $country_codes{$b_text};
 			   $retval;
 			} keys %$duallist) {
-		if ($c =~ /([a-z][a-z])\+([a-z][a-z])([0-9]?)/) {
+		if ($c =~ /([a-z][a-z])\+([a-z][a-z])([0-9]*)/) {
 			$a_text = substr($country_codes{$1},0,7) . " - " . substr($country_codes{$2},0,7) . " " . $3;
 		} elsif ($c =~ /([a-z][a-z])\+([a-z][a-z])/) {
 			$a_text = substr($country_codes{$1},0,7) . " - " . substr($country_codes{$2},0,7);
@@ -762,7 +762,7 @@ sub getUserInfo {
 	my @tmplist = glob("/etc/NetworkManager/system-connections/*-$ccode-*-$stype");
 	foreach my $file (@tmplist) {
 		# check file syntax, select first that matches
-		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]*|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)/i) {
 			$system_connection_file = $file;
 			last;
 		}
@@ -916,7 +916,7 @@ sub updateDefaultVpnResume {
 	my @tmplist = glob($configfiledir."*-$ccode-*-$stype.ovpn");
 	foreach my $file (@tmplist) {
 		# check file syntax, select first that matches
-		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
+		if ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]*|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i) {
 			$vpntype = $1;
 			$ccode = $2;
 			$comment = $3;

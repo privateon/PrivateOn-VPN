@@ -303,7 +303,7 @@ sub getCountryList {
 		closedir $dir;
 		
 		foreach my $file (@tmplist) {
-			next unless ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]?|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i);
+			next unless ($file =~ /(double|tor|vpn)-([a-z][a-z][0-9]*|[a-z][a-z]\+[a-z][a-z][0-9]?)-(.*)-(tcp|udp)\.ovpn/i);
 			($type, $country, $proto) = ($1, $2, $4);
 			if ($type eq 'vpn' ) {
 				$vpnlist->{$country} = 1;
