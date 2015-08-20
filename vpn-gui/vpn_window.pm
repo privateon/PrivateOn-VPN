@@ -764,6 +764,8 @@ sub getUserInfo {
 
 ################     Refresh/Activate VPN connection    ################
 sub updateDefaultVpn {
+	my $failover_mode = 0;
+
 	# disable refresh button for 20 seconds
 	this->{refreshButton}->setEnabled(0);
 	this->{buttonTimer}->start(20*1000);
@@ -787,78 +789,74 @@ sub updateDefaultVpn {
 		return;
 	}
 
-	if ($api_status == NET_PROTECTED || $api_status == NET_NEGATIVE || 
-	   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
-		$status_text .= "The VPN connection is deactivating,\n";
-		$status_text .= "Please hold on.\n\n";
-		print "VPN is active, deactivating...\n" if DEBUG > 0;
+	# check vpn and skip disabling if not active
+	if (!isVpnActive()) { 
+		if ($api_status == NET_PROTECTED || $api_status == NET_NEGATIVE || 
+		   $api_status == NET_CONFIRMING || $api_status == NET_UNCONFIRMED) { # i.e. vpn is up
+			$status_text .= "Previous VPN connection is deactivating.\n";
+			print "VPN is active, deactivating...\n" if DEBUG > 0;
 
-		# detect nmcli version
-		my @active_lines;
-		my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
-		if (DEBUG > 0) {
-			print STDERR "All active connections\n";
-			$test_string = '/usr/bin/nmcli conn show --active';
-		}
-		if ( system($test_string) == 0 ) {
-			# openSUSE 13.2 uses argument "conn show --active"
-			@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
-		} else {
-			# openSUSE 13.1 uses argument "conn status" 
-			@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
-		}
-		my @active_conns = ();
-		foreach my $conn (@active_lines) {
-			if ($conn =~ /(\S+)/) {
-				push @active_conns, $1;
+			# detect nmcli version
+			my @active_lines;
+			my $test_string = '/usr/bin/nmcli conn show --active >/dev/null 2>&1';
+			if (DEBUG > 0) {
+				print STDERR "All active connections\n";
+				$test_string = '/usr/bin/nmcli conn show --active';
 			}
-		}
-		
-		# set failover flag if above gave no results
-		my $failover_mode = 0;
-		if (!@active_conns) {
-			$failover_mode = 1;
-		}
+			if ( system($test_string) == 0 ) {
+				# openSUSE 13.2 uses argument "conn show --active"
+				@active_lines = `/usr/bin/nmcli conn show --active | /usr/bin/grep vpn`;
+			} else {
+				# openSUSE 13.1 uses argument "conn status" 
+				@active_lines = `/usr/bin/nmcli conn status | /usr/bin/grep vpn`;
+			}
+			my @active_conns = ();
+			foreach my $conn (@active_lines) {
+				if ($conn =~ /(\S+)/) {
+					push @active_conns, $1;
+				}
+			}
 
-		my $vpn_connection = getVpnConnection();
-		my $pty = this->{pty};
-		foreach my $conn (@$vpn_connection) {
-			my $vpn_name = $conn->{connection}->{id};
-			if ( $failover_mode  || ($vpn_name ~~ @active_conns) ) {
-				try {
-					print "Deactivating " . $vpn_name . "\n" if DEBUG > 0;
-					if (!$failover_mode) {
-						$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
+			# set failover flag if above gave no results
+			if (!@active_conns) {
+				$failover_mode = 1;
+			}
 
-						# wait for connection to close
-						for (my $i = 0; $i < 10; $i++) {
-							sleep 1;
-							if (!isVpnActive()) { last; }
+			my $vpn_connection = getVpnConnection();
+			my $pty = this->{pty};
+			foreach my $conn (@$vpn_connection) {
+				my $vpn_name = $conn->{connection}->{id};
+				if ( $failover_mode  || ($vpn_name ~~ @active_conns) ) {
+					try {
+						print "Deactivating " . $vpn_name . "\n" if DEBUG > 0;
+						if (!$failover_mode) {
+							$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null && echo \"VPN deactivation successful\"");
+
+							# wait for connection to close
+							for (my $i = 0; $i < 10; $i++) {
+								sleep 1;
+								unless ( isVpnActive() ) { last; }
+							}
+						} else {
+							# run as background process
+							system("/usr/bin/nmcli conn down id $vpn_name &");
+							unless ( isVpnActive() ) { last; }
 						}
-					} else {
-						# Don't collect the error output since failover mode produces a lot of it
-						$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null 2>&1 && echo \"$vpn_name deactivated\"");
-
-						# wait up to 4 sec for connection to be brought down
-						for (my $i = 0; $i < 4; $i++) {
-							sleep(1);
-							unless ($pty->is_active) { last; }
-						}
-
-						# restart pty if it is still active
-						if ($pty->is_active) {
-							$pty->close();
-							$pty = IO::Pty::Easy->new();
-							this->{pty} = $pty;
-						}
-					}
-				} catch {
-					warn "caught error: $_\n";
-				};
+					} catch {
+						warn "caught error: $_\n";
+					};
+				}
 			}
 		}
 	}
-
+	
+	if ($failover_mode) {
+		# wait for connections to close
+		sleep 2;
+	}
+	
+	$status_text .= "\nThe VPN connection will be activated,\n";
+	$status_text .= "Please hold on.\n\n";
 	setStatusText($status_text);
 
 	# return to QT event loop for 0.5 seconds
@@ -933,13 +931,11 @@ sub updateDefaultVpnResume {
 		$status_text .= "\nThere are no VPN connections!\n";
 		$status_text .= "Please click 'Servers'\n"; 
 		$status_text .= "to set your username/password\n"; 
-		this->{internalTimer}->start(10*60*1000);
+		this->{internalTimer}->start(2*60*1000);
 	} elsif ($return_code !=0) {
 		$status_text .= "\nUnexcepted Error.\n";
-		this->{internalTimer}->start(10*60*1000);
+		this->{internalTimer}->start(2*60*1000);
 	}else {
-		$status_text .= "\nThe VPN connection will be activated,\n";
-		$status_text .= "Please hold on.\n\n";
 		this->{updateStatusMode} = 'other';
 		this->{internalTimer}->start(1000);
 	}
@@ -1079,6 +1075,15 @@ sub turnOffVpn {
 	if (this->{turnoffButton}->text eq "Turn off") {
 		# continue to rest of subroutines
 
+	# network status = OFFLINE
+	} elsif (this->{turnoffButton}->text eq "Fix") {
+		fixConnection();
+		return 0;
+
+	# VPN is active
+	} elsif ( isVpnActive() ) {
+		# continue to rest of subroutines
+
 	# network status = UNPROTECTED and monitor = Enabled
 	} elsif (this->{turnoffButton}->text eq "Disable") {
 		removeDispatcher(DEBUG);
@@ -1096,11 +1101,6 @@ sub turnOffVpn {
 		this->{turnoffButton}->setEnabled(0);
 		return 0;
 
-	# network status = OFFLINE
-	} elsif (this->{turnoffButton}->text eq "Fix") {
-		fixConnection();
-		return 0;
-		
 	# error cases
 	} else {
 		# disable NetworkManager to force restart
@@ -1109,7 +1109,7 @@ sub turnOffVpn {
 		return 0;
 	}
 
-	
+
 	# check NetworkManager and nmcli
 	unless ( isNetworkManagerEnabled() ) {
 		my $status_text .= explainNetworkManagerProblem();
@@ -1120,7 +1120,7 @@ sub turnOffVpn {
 		this->{internalTimer}->start(1000);
 		return;
 	}
-	
+
 	my $status_text = "The VPN connection is deactivating,\n";
 	$status_text .= "Please hold on.\n\n";
 
@@ -1198,24 +1198,12 @@ sub turnOffVpnResume {
 					# wait for connection to close
 					for (my $i = 0; $i < 10; $i++) {
 						sleep 1;
-						if (!isVpnActive()) { last; }
+						unless ( isVpnActive() ) { last; }
 					}
 				} else {
-					# Don't collect the error output since failover mode produces a lot of it
-					$pty->spawn("/usr/bin/nmcli conn down id $vpn_name >/dev/null 2>&1 && echo \"$vpn_name deactivated\"");
-
-					# wait up to 4 sec for connection to be brought down
-					for (my $i = 0; $i < 4; $i++) {
-						sleep(1);
-						unless ($pty->is_active) { last; }
-					}
-
-					# restart pty if it is still active
-					if ($pty->is_active) {
-						$pty->close();
-						$pty = IO::Pty::Easy->new();
-						this->{pty} = $pty;
-					}
+					# run as background process
+					system("/usr/bin/nmcli conn down id $vpn_name &");
+					unless ( isVpnActive() ) { last; }
 				}
 			} catch {
 				warn "caught error: $_\n";
@@ -1232,6 +1220,7 @@ sub turnOffVpnResume {
 		my $status_text = $status->toPlainText();
 		$status_text .= "The VPN connection is deactivated.\n";
 		setStatusText($status_text);
+		sleep 2;
 	}
 	
 	return 0;
@@ -1413,7 +1402,7 @@ sub updateStatusNormal {
 	updateButtons(0);
 
 	if ($api_status == NET_UNPROTECTED || $api_status == NET_PROTECTED) {
-		this->{internalTimer}->start(60*1000);
+		this->{internalTimer}->start(20*1000);
 	} elsif ($api_status == NET_UNCONFIRMED || $api_status == NET_NEGATIVE) {
 		this->{internalTimer}->start(15*1000);
 	} elsif ($api_status == NET_CONFIRMING) {
