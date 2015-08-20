@@ -42,6 +42,7 @@ use vpn_ipc qw(getApiStatus getNetStatus getCripplingStatus getMonitorState
 		takeABreak resumeIdling forceRefresh undoCrippling
 		removeDispatcher writeDispatcher removeRoute rereadConfig
 		disableMonitor enableMonitor); 
+use vpn_network qw(getVpnConnection isVpnActive);
 
 use constant {
 	DISPATCH_FILE   => "/etc/NetworkManager/dispatcher.d/vpn-up",
@@ -68,6 +69,7 @@ use constant {
 use constant {
 	API_CHECK_TIMEOUT       => 10
 };
+
 
 ################              Setup Window              ################
 sub NEW {
@@ -295,37 +297,6 @@ sub reenableRefreshButton {
 
 
 ################           Helper subroutines           ################
-sub getConnections {
-	my $object = Net::DBus->system
-	    ->get_service("org.freedesktop.NetworkManager")
-	        ->get_object("/org/freedesktop/NetworkManager/Settings",
-	            "org.freedesktop.NetworkManager.Settings");
-
-	return $object->ListConnections();
-}
-
-
-sub getVpnConnection {
-	my ($connections) = @_;
-	my @return_conns = ();
-
-	foreach my $connection (@{$connections}) {
-		my $object = Net::DBus->system
-		    ->get_service("org.freedesktop.NetworkManager")
-		        ->get_object($connection,
-		            "org.freedesktop.NetworkManager.Settings.Connection");
-		my $settings = $object->GetSettings();
-		push(@return_conns, $settings) if ($settings->{connection}->{type} eq "vpn");
-	}
-	return \@return_conns;
-}
-
-
-sub isVpnActive {
-	return </sys/devices/virtual/net/tun*> ? 1 : 0;
-}
-
-
 sub findIconPath
 {
 	# find path to images directory, resolve symlink if necessary
@@ -841,7 +812,7 @@ sub updateDefaultVpn {
 			$failover_mode = 1;
 		}
 
-		my $vpn_connection = getVpnConnection(getConnections());
+		my $vpn_connection = getVpnConnection();
 		my $pty = this->{pty};
 		foreach my $conn (@$vpn_connection) {
 			my $vpn_name = $conn->{connection}->{id};
@@ -1188,7 +1159,7 @@ sub turnOffVpnResume {
 		$failover_mode = 1;
 	}
 
-	my $vpn_connection = getVpnConnection(getConnections());
+	my $vpn_connection = getVpnConnection();
 	foreach my $conn (@$vpn_connection) {
 		my $vpn_name = $conn->{connection}->{id};
 		if ( $failover_mode  || ($vpn_name ~~ @active_conns) ) {
