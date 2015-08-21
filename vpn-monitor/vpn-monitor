@@ -58,7 +58,7 @@ use constant {
 	DISPATCH_FILE => '/etc/NetworkManager/dispatcher.d/vpn-up',
 	INI_FILE      => '/etc/PrivateOn/vpn-default.ini',
 	SERVICE_NAME  => 'vpnmonitor',
-	VERSION       => '1.0',
+	VERSION       => '1.1',
 	DEBUG         => 1
 };
 

@@ -69,9 +69,9 @@ sub NEW
 	this->{about} = Qt::MessageBox(this);
 	this->{about}->setWindowModality(Qt::NonModal());
 	this->{about}->setWindowTitle(this->tr('About PrivateOn VPN'));
-	this->{about}->setText('PrivateOn VPN<br>&nbsp;&nbsp;&nbsp;Version 1.0<br>GitHub Release');
-this->{about}->setDetailedText('             PrivateOn VPN  -  Privacy Software
-                Version 1.0      (GitHub Release)
+	this->{about}->setText('PrivateOn VPN<br>&nbsp;&nbsp;&nbsp;Version 1.1<br>GitHub Release');
+	this->{about}->setDetailedText('             PrivateOn VPN  -  Privacy Software
+                Version 1.1      (GitHub Release)
       
         VPN Manager for configuring, monitoring 
                and controlling VPN connections.
