@@ -1,7 +1,12 @@
 -----------------------------------------------------------------
+Wed Aug 21 07:20:00 UTC 2015 - info@tietosuojakone.fi
+
+- Support for more than 9 servers per country and better error handling
+
+-----------------------------------------------------------------
 Wed Jun 07 21:46:00 UTC 2015 - info@tietosuojakone.fi
 
-- After two years of development, Tietosuojakone Oy is proud to announce 
+- After two years of development, Tietosuojakone Oy is proud to announce
 the first stable release of the PrivateOn-VPN privacy software package.
 
 -----------------------------------------------------------------
